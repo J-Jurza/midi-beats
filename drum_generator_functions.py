@@ -1,534 +1,453 @@
 # drum_pattern_generator.py
 
-"""
-A self-contained MIDI drum pattern generator for multiple genres (House,
-Breaks, UK Garage, Drum & Bass). Each function receives all required parameters
-(explicit GM note numbers, output directories, etc.) so there are no
-external global dependencies. Output directories are also passed in,
-allowing flexible organisation of generated MIDI files.
-"""
-
 import os
 import random
-import datetime
 from midiutil import MIDIFile
 
+# General MIDI drum note constants
+GM_KICK = 36
+GM_SNARE = 38
+GM_CLAP = 39
+GM_CHH = 42
+GM_OHH = 46
+GM_RIDE = 51
 
-def prepare_output_directory(base_path):
+########################################
+# Utilities for separate instrument .mid files
+########################################
+
+def humanize_instrument_events(events_dict, velocity_variation=0, timing_variation=0.0):
     """
-    Create a dated subfolder in a user-specified base_path.
-    Test write permissions by creating and deleting a temporary test file.
-
-    Args:
-        base_path (str): Top-level folder where the dated subfolder will be created.
-
-    Returns:
-        str: Full path to the newly created dated subfolder.
-
-    Raises:
-        Exception: If the test file cannot be written or verified.
+    In-place random velocity/timing offsets for each instrument's event list.
+    events_dict: {"kick": [(time, vel), ...], "snare": [...], ...}.
     """
-    today_str = datetime.datetime.now().strftime("%Y_%m_%d")
-    output_dir = os.path.join(base_path, today_str)
+    for instrument, ev_list in events_dict.items():
+        for i, (time, vel) in enumerate(ev_list):
+            if velocity_variation > 0:
+                delta_vel = random.randint(-velocity_variation, velocity_variation)
+                vel = max(1, min(127, vel + delta_vel))
+            if timing_variation > 0:
+                delta_time = random.uniform(-timing_variation, timing_variation)
+                time = max(0, time + delta_time)
+            ev_list[i] = (time, vel)
+
+
+def save_instrument_midis(events_dict, output_dir, genre, tempo=120.0):
+    """
+    Write separate .mid files per instrument, with all appended variations in time.
+    
+    events_dict: {"kick": [(time, vel), ...], "snare": [...], ...}
+    We'll map instrument -> GM note. Each instrument's entire pattern is saved
+    to a single-track .mid file, sorted by time.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
-    test_filename = "test_midi_clip.txt"
-    test_filepath = os.path.join(output_dir, test_filename)
+    for instrument, ev_list in events_dict.items():
+        # Decide GM note per instrument
+        if instrument == "kick":
+            note = GM_KICK
+        elif instrument == "snare":
+            note = GM_SNARE
+        elif instrument == "clap":
+            note = GM_CLAP
+        elif instrument == "chh":
+            note = GM_CHH
+        elif instrument == "ohh":
+            note = GM_OHH
+        else:
+            # Unrecognised instrument -> skip
+            continue
 
-    try:
-        with open(test_filepath, "w", encoding="utf-8") as f:
-            f.write("MIDI data (placeholder)")
+        # Sort events by time
+        ev_list.sort(key=lambda x: x[0])
 
-        if not os.path.exists(test_filepath):
-            raise Exception("Test file was not created.")
-
-        os.remove(test_filepath)
-        print(f"Output directory verified: {output_dir}")
-        return output_dir
-    except Exception as exc:
-        raise Exception(f"Failed to verify output directory: {exc}")
-
-
-def humanize_events(events, velocity_variation=0, timing_variation=0.0):
-    """
-    Apply random velocity and timing offsets to each MIDI event (humanization).
-
-    Args:
-        events (dict[str, list[tuple[float, int, int]]]): Dictionary of instrument -> list of (time, note, velocity).
-        velocity_variation (int): Maximum random ±offset for velocity. 0 for no variation.
-        timing_variation (float): Maximum random ±offset for timing in beats. 0 for no variation.
-
-    Returns:
-        None; modifies the 'events' list in-place.
-    """
-    for instrument, notes in events.items():
-        for i, (time, note, vel) in enumerate(notes):
-            if velocity_variation > 0:
-                vel += random.randint(-velocity_variation, velocity_variation)
-                vel = max(1, min(127, vel))
-            if timing_variation > 0:
-                time += random.uniform(-timing_variation, timing_variation)
-                if time < 0:
-                    time = 0
-            notes[i] = (time, note, vel)
-
-
-def save_midi_files(
-        events, output_dir, genre, tempo, variation_str="var_01", channel=9
-    ):
-    """
-    Save the events dict to separate MIDI files per instrument within the specified folder.
-
-    Args:
-        events (dict[str, list[tuple[float, int, int]]]): Mapping of instrument name
-            to list of (time, note, velocity) events.
-        output_dir (str): Base directory where MIDI files are saved.
-        genre (str): Genre name, used to name the subfolder (e.g. 'house', 'breaks').
-        tempo (float): Tempo in BPM for the MIDI file.
-        variation_str (str): A folder/label for each variation (e.g. 'var_05').
-        channel (int): MIDI channel to use for all drum notes (9 is typical for drums).
-
-    Returns:
-        None; writes MIDI files to disk.
-    """
-    variation_path = os.path.join(output_dir, genre, variation_str)
-    os.makedirs(variation_path, exist_ok=True)
-
-    for instrument, notes in events.items():
-        midi_filename = f"{genre}_{instrument}.mid"
-        file_path = os.path.join(variation_path, midi_filename)
-
+        # Build single-track MIDI
         midi = MIDIFile(numTracks=1)
         midi.addTempo(track=0, time=0, tempo=tempo)
 
-        for (time, note, vel) in notes:
-            # We'll use a short fixed duration for drum hits (0.1 beats).
+        # Add each event
+        for (t, vel) in ev_list:
             midi.addNote(
                 track=0,
-                channel=channel,
+                channel=9,   # standard drum channel
                 pitch=note,
-                time=time,
+                time=t,
                 duration=0.1,
                 volume=vel
             )
 
-        with open(file_path, "wb") as f:
+        # e.g. "house_kick.mid"
+        filename = f"{genre}_{instrument}.mid"
+        filepath = os.path.join(output_dir, filename)
+        with open(filepath, "wb") as f:
             midi.writeFile(f)
 
+########################################
+# House ABAC
+########################################
 
 def create_house_patterns(
-        output_dir,
-        gm_kick=36, gm_snare=38, gm_clap=39, gm_chh=42, gm_ohh=46,
-        num_variations=10,
-        velocity_var=15,
-        timing_var=0.02,
-        tempo=120.0
-    ):
+    output_dir,
+    num_variations=5,
+    velocity_var=15,
+    timing_var=0.02,
+    tempo=120.0
+):
     """
-    Generate and save House drum pattern variations (4 bars each, with a fill on bar 4).
-    Each instrument's events are saved in separate MIDI clips in a subfolder.
-
-    Args:
-        output_dir (str): Base directory for output.
-        gm_kick (int): MIDI note for Kick.
-        gm_snare (int): MIDI note for Snare.
-        gm_clap (int): MIDI note for Clap.
-        gm_chh (int): MIDI note for Closed Hi-Hat.
-        gm_ohh (int): MIDI note for Open Hi-Hat.
-        num_variations (int): How many variations to generate.
-        velocity_var (int): Maximum random ±offset for velocity.
-        timing_var (float): Maximum random ±offset for timing (in beats).
-        tempo (float): BPM for the generated MIDI file.
-
-    Returns:
-        None; writes out 1..num_variations subfolders with separate .mid files.
+    Generate House ABAC sequences for 'num_variations' times, then
+    export each instrument's hits to separate .mid files.
     """
     genre = "house"
-    for variation in range(1, num_variations + 1):
-        random.seed(1000 + variation)
+    os.makedirs(output_dir, exist_ok=True)
 
-        kick_pattern = [0.0, 1.0, 2.0, 3.0]
-        snare_pattern = [1.0, 3.0]
-        clap_pattern = [1.0, 3.0]
-        ohh_pattern = [0.5, 1.5, 2.5, 3.5]
+    # event dictionary for separate instruments
+    events = {
+        "kick":  [],
+        "snare": [],
+        "clap":  [],
+        "chh":   [],
+        "ohh":   []
+    }
 
-        # Randomly choose closed-hat resolution (16th or 8th)
+    # Base patterns
+    kick_pat = [0.0, 1.0, 2.0, 3.0]
+    snare_pat = [1.0, 3.0]
+    clap_pat = [1.0, 3.0]
+    ohh_pat = [0.5, 1.5, 2.5, 3.5]
+
+    def bar_A(offset, chh_list):
+        for t in kick_pat:
+            events["kick"].append((offset + t, 100))
+        for t in snare_pat:
+            events["snare"].append((offset + t, 110))
+        for t in clap_pat:
+            events["clap"].append((offset + t, 110))
+        for t in chh_list:
+            events["chh"].append((offset + t, 90))
+        for t in ohh_pat:
+            events["ohh"].append((offset + t, 100))
+
+    def bar_B(offset, chh_list):
+        # mini fill
+        bar_A(offset, chh_list)
         if random.random() < 0.5:
-            chh_pattern = [i * 0.25 for i in range(16)]
+            # single snare at 3.75
+            events["snare"].append((offset + 3.75, 110))
         else:
-            chh_pattern = [i * 0.5 for i in range(8)]
+            # double kick at 3.5, 3.75
+            events["kick"].append((offset + 3.5, 100))
+            events["kick"].append((offset + 3.75, 100))
 
-        events = {
-            "kick": [],
-            "snare": [],
-            "clap": [],
-            "hats": []
-        }
-
-        # Bars 1-3
-        for bar in range(3):
-            offset = bar * 4.0
-            for t in kick_pattern:
-                events["kick"].append((offset + t, gm_kick, 100))
-            for t in snare_pattern:
-                events["snare"].append((offset + t, gm_snare, 110))
-            for t in clap_pattern:
-                events["clap"].append((offset + t, gm_clap, 110))
-            for t in chh_pattern:
-                events["hats"].append((offset + t, gm_chh, 90))
-            for t in ohh_pattern:
-                events["hats"].append((offset + t, gm_ohh, 100))
-
-        # Bar 4 (including fill)
-        offset = 3 * 4.0
-        for t in kick_pattern:
-            events["kick"].append((offset + t, gm_kick, 100))
-        for t in snare_pattern:
-            events["snare"].append((offset + t, gm_snare, 110))
-        for t in clap_pattern:
-            events["clap"].append((offset + t, gm_clap, 110))
-        for t in chh_pattern:
-            events["hats"].append((offset + t, gm_chh, 90))
-        for t in ohh_pattern:
-            events["hats"].append((offset + t, gm_ohh, 100))
-
-        # Decide fill type
+    def bar_C(offset, chh_list):
+        # full fill
+        bar_A(offset, chh_list)
         if random.random() < 0.5:
-            # Snare roll fill
-            for t in [offset + 3.25, offset + 3.5, offset + 3.75]:
-                events["snare"].append((t, gm_snare, 100))
+            # snare roll
+            for ft in [3.25, 3.5, 3.75]:
+                events["snare"].append((offset + ft, 100))
         else:
-            # Kick fill
-            events["kick"].append((offset + 3.5, gm_kick, 100))
-            events["kick"].append((offset + 3.75, gm_kick, 100))
+            # double kick
+            events["kick"].append((offset + 3.5, 100))
+            events["kick"].append((offset + 3.75, 100))
 
-        # Humanize & save
-        humanize_events(events, velocity_variation=velocity_var,
-                        timing_variation=timing_var)
-        var_str = f"var_{variation:02d}"
-        save_midi_files(events, output_dir, genre, tempo, var_str)
+    random_seed_base = 1000
+    for i in range(1, num_variations + 1):
+        random.seed(random_seed_base + i)
+        base_offset = (i - 1) * 16.0
 
+        # random closed-hat pattern
+        if random.random() < 0.5:
+            chh_list = [x * 0.25 for x in range(16)]
+        else:
+            chh_list = [x * 0.5 for x in range(8)]
+
+        # ABAC
+        bar_A(base_offset + 0.0, chh_list)
+        bar_B(base_offset + 4.0, chh_list)
+        bar_A(base_offset + 8.0, chh_list)
+        bar_C(base_offset + 12.0, chh_list)
+
+    # Humanise and save
+    humanize_instrument_events(events, velocity_var, timing_var)
+    final_dir = os.path.join(output_dir, genre)
+    save_instrument_midis(events, final_dir, genre, tempo)
+    return final_dir
+
+
+########################################
+# Breaks ABAC
+########################################
 
 def create_breaks_patterns(
-        output_dir,
-        gm_kick=36, gm_snare=38, gm_chh=42,
-        num_variations=10,
-        velocity_var=15,
-        timing_var=0.02,
-        tempo=130.0
-    ):
-    """
-    Generate and save Breakbeat pattern variations (4 bars with a fill on bar 4).
-    Each instrument's events are saved in separate MIDI clips in a subfolder.
-
-    Args:
-        output_dir (str): Base directory for output.
-        gm_kick (int): MIDI note for Kick.
-        gm_snare (int): MIDI note for Snare.
-        gm_chh (int): MIDI note for Closed Hi-Hat (or Ride).
-        num_variations (int): Number of pattern variations.
-        velocity_var (int): Max random ±offset for velocity.
-        timing_var (float): Max random ±offset for timing (in beats).
-        tempo (float): BPM for the generated MIDI file.
-
-    Returns:
-        None
-    """
+    output_dir,
+    num_variations=5,
+    velocity_var=15,
+    timing_var=0.02,
+    tempo=130.0
+):
     genre = "breaks"
-    for variation in range(1, num_variations + 1):
-        random.seed(2000 + variation)
+    os.makedirs(output_dir, exist_ok=True)
 
-        kick_pattern = [0.0, 2.5]
-        snare_pattern = [1.0, 3.0]
-        ghost_snare_positions = [1.25, 2.75]
-        ghost_kick_positions = []
+    events = {
+        "kick":  [],
+        "snare": [],
+        "clap":  [],
+        "chh":   [],
+        "ohh":   []
+    }
+
+    kick_pat = [0.0, 2.5]
+    snare_pat = [1.0, 3.0]
+
+    def base_bar(off, g_snares, g_kicks, hat_pat):
+        for t in kick_pat:
+            events["kick"].append((off + t, 100))
+        for t in snare_pat:
+            events["snare"].append((off + t, 110))
+        for gs in g_snares:
+            events["snare"].append((off + gs, 70))
+        for gk in g_kicks:
+            events["kick"].append((off + gk, 80))
+        for h in hat_pat:
+            events["chh"].append((off + h, 100))
+
+    def bar_B(off, g_snares, g_kicks, hat_pat):
+        base_bar(off, g_snares, g_kicks, hat_pat)
         if random.random() < 0.5:
-            ghost_kick_positions.append(3.5)  # Kick on 'and' of 4
-
-        hat_pattern = [i * 0.5 for i in range(8)]
-
-        events = {
-            "kick": [],
-            "snare": [],
-            "hats": []
-        }
-
-        # Bars 1-3
-        for bar in range(3):
-            offset = bar * 4.0
-            for t in kick_pattern:
-                events["kick"].append((offset + t, gm_kick, 100))
-            for t in snare_pattern:
-                events["snare"].append((offset + t, gm_snare, 110))
-            for t in ghost_snare_positions:
-                events["snare"].append((offset + t, gm_snare, 70))
-            for t in ghost_kick_positions:
-                events["kick"].append((offset + t, gm_kick, 80))
-            for t in hat_pattern:
-                events["hats"].append((offset + t, gm_chh, 100))
-
-        # Bar 4 w/ fill
-        offset = 3 * 4.0
-        for t in kick_pattern:
-            events["kick"].append((offset + t, gm_kick, 100))
-        for t in snare_pattern:
-            events["snare"].append((offset + t, gm_snare, 110))
-        for t in ghost_snare_positions:
-            events["snare"].append((offset + t, gm_snare, 70))
-        for t in ghost_kick_positions:
-            events["kick"].append((offset + t, gm_kick, 80))
-        for t in hat_pattern:
-            events["hats"].append((offset + t, gm_chh, 100))
-
-        # Amen-style fill or simpler fill
-        if random.random() < 0.5:
-            # Amen fill
-            events["kick"] = [
-                n for n in events["kick"]
-                if not (n[0] == offset and n[1] == gm_kick)
-            ]
-            events["snare"].append((offset + 0.0, gm_snare, 100))
-            events["snare"].append((offset + 0.25, gm_snare, 90))
-            events["kick"].append((offset + 0.5, gm_kick, 100))
-            # Shift final snare
-            events["snare"] = [
-                n for n in events["snare"]
-                if not (n[0] == offset + 3.0 and n[1] == gm_snare)
-            ]
-            events["snare"].append((offset + 3.5, gm_snare, 110))
+            # single snare at 3.75
+            events["snare"].append((off + 3.75, 100))
         else:
-            # Simpler fill
+            # double kick
+            events["kick"].append((off + 3.5, 100))
+            events["kick"].append((off + 3.75, 100))
+
+    def bar_C(off, g_snares, g_kicks, hat_pat):
+        base_bar(off, g_snares, g_kicks, hat_pat)
+        if random.random() < 0.5:
+            # Amen partial fill
+            events["kick"] = [x for x in events["kick"] if abs(x[0] - off) > 0.001]
+            events["snare"].append((off + 0.0, 100))
+            events["snare"].append((off + 0.25, 90))
+            events["kick"].append((off + 0.5, 100))
+            events["snare"] = [x for x in events["snare"] if abs(x[0] - (off + 3.0)) > 0.001]
+            events["snare"].append((off + 3.5, 110))
+        else:
+            # simpler fill
             if random.random() < 0.5:
-                # Snare roll
-                for t in [offset + 3.25, offset + 3.5, offset + 3.75]:
-                    events["snare"].append((t, gm_snare, 100))
+                # snare roll
+                for ft in [3.25, 3.5, 3.75]:
+                    events["snare"].append((off + ft, 100))
             else:
-                # Double kick
-                events["kick"].append((offset + 3.5, gm_kick, 100))
-                events["kick"].append((offset + 3.75, gm_kick, 100))
+                # double kick
+                events["kick"].append((off + 3.5, 100))
+                events["kick"].append((off + 3.75, 100))
 
-        humanize_events(events, velocity_variation=velocity_var,
-                        timing_variation=timing_var)
-        var_str = f"var_{variation:02d}"
-        save_midi_files(events, output_dir, genre, tempo, var_str)
+    random_seed_base = 2000
+    for var_i in range(1, num_variations + 1):
+        random.seed(random_seed_base + var_i)
+        base_offset = (var_i - 1) * 16.0
 
+        ghost_snares = [1.25, 2.75]
+        ghost_kicks = []
+        if random.random() < 0.5:
+            ghost_kicks.append(3.5)
+        hat_pat = [x * 0.5 for x in range(8)]
+
+        # ABAC
+        base_bar(base_offset, ghost_snares, ghost_kicks, hat_pat)
+        bar_B(base_offset + 4.0, ghost_snares, ghost_kicks, hat_pat)
+        base_bar(base_offset + 8.0, ghost_snares, ghost_kicks, hat_pat)
+        bar_C(base_offset + 12.0, ghost_snares, ghost_kicks, hat_pat)
+
+    humanize_instrument_events(events, velocity_var, timing_var)
+    final_dir = os.path.join(output_dir, genre)
+    save_instrument_midis(events, final_dir, genre, tempo)
+    return final_dir
+
+
+########################################
+# UKG ABAC
+########################################
 
 def create_ukg_patterns(
-        output_dir,
-        gm_kick=36, gm_snare=38, gm_clap=39, gm_chh=42, gm_ohh=46,
-        num_variations=10,
-        velocity_var=15,
-        timing_var=0.02,
-        tempo=132.0
-    ):
-    """
-    Generate and save UK Garage (2-Step) drum pattern variations (4 bars w/ fill on bar 4).
-
-    Args:
-        output_dir (str): Base directory for output.
-        gm_kick (int): MIDI note for Kick.
-        gm_snare (int): MIDI note for Snare.
-        gm_clap (int): MIDI note for Clap.
-        gm_chh (int): MIDI note for Closed Hi-Hat.
-        gm_ohh (int): MIDI note for Open Hi-Hat.
-        num_variations (int): Number of pattern variations.
-        velocity_var (int): Max random ±offset for velocity.
-        timing_var (float): Max random ±offset for timing (in beats).
-        tempo (float): BPM for the generated MIDI file.
-
-    Returns:
-        None
-    """
+    output_dir,
+    num_variations=5,
+    velocity_var=15,
+    timing_var=0.02,
+    tempo=132.0
+):
     genre = "ukg"
-    for variation in range(1, num_variations + 1):
-        random.seed(3000 + variation)
+    os.makedirs(output_dir, exist_ok=True)
 
-        kick_pattern = [0.0, 2.5]
-        snare_pattern = [1.0, 3.0]
-        clap_pattern = [1.0, 3.0]
+    events = {
+        "kick":  [],
+        "snare": [],
+        "clap":  [],
+        "chh":   [],
+        "ohh":   []
+    }
 
-        open_hat_pattern = [0.5, 1.5, 3.5]
-        closed_hat_pattern = [0.0, 1.0, 2.0, 3.0]
-        swung_hat = 2.25
+    kick_pat = [0.0, 2.5]
+    snare_pat = [1.0, 3.0]
+    clap_pat = [1.0, 3.0]
+    oh_pat = [0.5, 1.5, 3.5]
+    ch_pat = [0.0, 1.0, 2.0, 3.0]
+    swung_hat = 2.25
 
-        extra_ghost_kick = None
+    def bar_A(off, ghost_kick):
+        for t in kick_pat:
+            events["kick"].append((off + t, 100))
+        for t in snare_pat:
+            events["snare"].append((off + t, 110))
+        for t in clap_pat:
+            events["clap"].append((off + t, 110))
+        for t in ch_pat:
+            events["chh"].append((off + t, 90))
+        for t in oh_pat:
+            events["ohh"].append((off + t, 100))
+        events["chh"].append((off + swung_hat, 80))
+        if ghost_kick is not None:
+            events["kick"].append((off + ghost_kick, 60))
+
+    def bar_B(off, ghost_kick):
+        bar_A(off, ghost_kick)
         if random.random() < 0.5:
-            extra_ghost_kick = 1.75
-
-        events = {
-            "kick": [],
-            "snare": [],
-            "clap": [],
-            "hats": []
-        }
-
-        # Bars 1-3
-        for bar in range(3):
-            offset = bar * 4.0
-            for t in kick_pattern:
-                events["kick"].append((offset + t, gm_kick, 100))
-            for t in snare_pattern:
-                events["snare"].append((offset + t, gm_snare, 110))
-            for t in clap_pattern:
-                events["clap"].append((offset + t, gm_clap, 110))
-            for t in closed_hat_pattern:
-                events["hats"].append((offset + t, gm_chh, 90))
-            for t in open_hat_pattern:
-                events["hats"].append((offset + t, gm_ohh, 100))
-
-            # Swung closed hat
-            events["hats"].append((offset + swung_hat, gm_chh, 80))
-            # Extra ghost kick
-            if extra_ghost_kick is not None:
-                events["kick"].append((offset + extra_ghost_kick, gm_kick, 60))
-
-        # Bar 4 with fill
-        offset = 3 * 4.0
-        for t in kick_pattern:
-            events["kick"].append((offset + t, gm_kick, 100))
-        for t in snare_pattern:
-            events["snare"].append((offset + t, gm_snare, 110))
-        for t in clap_pattern:
-            events["clap"].append((offset + t, gm_clap, 110))
-        for t in closed_hat_pattern:
-            events["hats"].append((offset + t, gm_chh, 90))
-        for t in open_hat_pattern:
-            events["hats"].append((offset + t, gm_ohh, 100))
-        events["hats"].append((offset + swung_hat, gm_chh, 80))
-        if extra_ghost_kick is not None:
-            events["kick"].append((offset + extra_ghost_kick, gm_kick, 60))
-
-        # Fill: snare roll or double kick
-        if random.random() < 0.5:
-            for t in [offset + 3.25, offset + 3.5, offset + 3.75]:
-                events["snare"].append((t, gm_snare, 100))
+            # single snare accent
+            events["snare"].append((off + 3.75, 100))
         else:
-            events["kick"].append((offset + 3.5, gm_kick, 100))
-            events["kick"].append((offset + 3.75, gm_kick, 100))
+            # double kick
+            events["kick"].append((off + 3.5, 100))
+            events["kick"].append((off + 3.75, 100))
 
-        humanize_events(events, velocity_variation=velocity_var,
-                        timing_variation=timing_var)
-        var_str = f"var_{variation:02d}"
-        save_midi_files(events, output_dir, genre, tempo, var_str)
+    def bar_C(off, ghost_kick):
+        bar_A(off, ghost_kick)
+        if random.random() < 0.5:
+            # snare roll
+            for ft in [3.25, 3.5, 3.75]:
+                events["snare"].append((off + ft, 100))
+        else:
+            # double kick
+            events["kick"].append((off + 3.5, 100))
+            events["kick"].append((off + 3.75, 100))
 
+    random_seed_base = 3000
+    for var_i in range(1, num_variations + 1):
+        random.seed(random_seed_base + var_i)
+        base_offset = (var_i - 1) * 16.0
+
+        ghost_k = None
+        if random.random() < 0.5:
+            ghost_k = 1.75
+
+        bar_A(base_offset, ghost_k)
+        bar_B(base_offset + 4.0, ghost_k)
+        bar_A(base_offset + 8.0, ghost_k)
+        bar_C(base_offset + 12.0, ghost_k)
+
+    humanize_instrument_events(events, velocity_var, timing_var)
+    final_dir = os.path.join(output_dir, genre)
+    save_instrument_midis(events, final_dir, genre, tempo)
+    return final_dir
+
+########################################
+# DnB ABAC
+########################################
 
 def create_dnb_patterns(
-        output_dir,
-        gm_kick=36, gm_snare=38, gm_chh=42,
-        num_variations=10,
-        velocity_var=15,
-        timing_var=0.02,
-        tempo=174.0
-    ):
-    """
-    Generate and save Drum & Bass pattern variations (4 bars w/ fill on bar 4).
-
-    Args:
-        output_dir (str): Base directory for output.
-        gm_kick (int): MIDI note for Kick.
-        gm_snare (int): MIDI note for Snare.
-        gm_chh (int): MIDI note for Closed Hi-Hat.
-        num_variations (int): Number of pattern variations.
-        velocity_var (int): Max random ±offset for velocity.
-        timing_var (float): Max random ±offset for timing (in beats).
-        tempo (float): BPM for the generated MIDI file.
-
-    Returns:
-        None
-    """
+    output_dir,
+    num_variations=5,
+    velocity_var=15,
+    timing_var=0.02,
+    tempo=174.0
+):
     genre = "dnb"
-    for variation in range(1, num_variations + 1):
-        random.seed(4000 + variation)
+    os.makedirs(output_dir, exist_ok=True)
 
-        # Two-step DnB
-        kick_pattern = [0.0, 2.5]
-        snare_pattern = [1.0, 3.0]
-        ghost_snare_positions = [1.25, 2.75]
-        ghost_kick_positions = []
+    events = {
+        "kick":  [],
+        "snare": [],
+        "clap":  [],
+        "chh":   [],
+        "ohh":   []
+    }
+
+    kick_pat = [0.0, 2.5]
+    snare_pat = [1.0, 3.0]
+    ghost_snares = [1.25, 2.75]
+    hat_pat = [i * 0.25 for i in range(16)]
+    high_vel, low_vel = 100, 60
+
+    def bar_A(off, ghost_kicks):
+        for t in kick_pat:
+            events["kick"].append((off + t, 100))
+        for t in snare_pat:
+            events["snare"].append((off + t, 110))
+        for gsn in ghost_snares:
+            events["snare"].append((off + gsn, 70))
+        for gk in ghost_kicks:
+            events["kick"].append((off + gk, 80))
+        # hats
+        for i, h_t in enumerate(hat_pat):
+            vel = high_vel if (i % 2 == 0) else low_vel
+            events["chh"].append((off + h_t, vel))
+
+    def bar_B(off, ghost_kicks):
+        bar_A(off, ghost_kicks)
         if random.random() < 0.5:
-            ghost_kick_positions.append(0.75)
-
-        # 16th hats
-        hat_pattern = [i * 0.25 for i in range(16)]
-        high_vel, low_vel = 100, 60
-
-        events = {
-            "kick": [],
-            "snare": [],
-            "hats": []
-        }
-
-        # Bars 1-3
-        for bar in range(3):
-            offset = bar * 4.0
-            for t in kick_pattern:
-                events["kick"].append((offset + t, gm_kick, 100))
-            for t in snare_pattern:
-                events["snare"].append((offset + t, gm_snare, 110))
-            for t in ghost_snare_positions:
-                events["snare"].append((offset + t, gm_snare, 70))
-            for t in ghost_kick_positions:
-                events["kick"].append((offset + t, gm_kick, 80))
-
-            for i, t in enumerate(hat_pattern):
-                vel = high_vel if i % 2 == 0 else low_vel
-                events["hats"].append((offset + t, gm_chh, vel))
-
-        # Bar 4 with fill
-        offset = 3 * 4.0
-        for t in kick_pattern:
-            events["kick"].append((offset + t, gm_kick, 100))
-        for t in snare_pattern:
-            events["snare"].append((offset + t, gm_snare, 110))
-        for t in ghost_snare_positions:
-            events["snare"].append((offset + t, gm_snare, 70))
-        for t in ghost_kick_positions:
-            events["kick"].append((offset + t, gm_kick, 80))
-
-        for i, t in enumerate(hat_pattern):
-            vel = high_vel if i % 2 == 0 else low_vel
-            events["hats"].append((offset + t, gm_chh, vel))
-
-        # Amen or simple fill
-        if random.random() < 0.5:
-            # Amen fill
-            events["kick"] = [
-                n for n in events["kick"]
-                if not (n[0] == offset and n[1] == gm_kick)
-            ]
-            events["snare"].append((offset + 0.0, gm_snare, 100))
-            events["snare"].append((offset + 0.25, gm_snare, 90))
-            events["kick"].append((offset + 0.5, gm_kick, 100))
-            # Shift final snare
-            events["snare"] = [
-                n for n in events["snare"]
-                if not (n[0] == offset + 3.0 and n[1] == gm_snare)
-            ]
-            events["snare"].append((offset + 3.5, gm_snare, 110))
+            # single ghost snare near 3.75
+            events["snare"].append((off + 3.75, 100))
         else:
-            # Simple fill
+            # double kick
+            events["kick"].append((off + 3.5, 100))
+            events["kick"].append((off + 3.75, 100))
+
+    def bar_C(off, ghost_kicks):
+        bar_A(off, ghost_kicks)
+        if random.random() < 0.5:
+            # Amen partial fill
+            events["kick"] = [e for e in events["kick"] if abs(e[0] - off) > 0.001]
+            events["snare"].append((off + 0.0, 100))
+            events["snare"].append((off + 0.25, 90))
+            events["kick"].append((off + 0.5, 100))
+            events["snare"] = [x for x in events["snare"] if abs(x[0] - (off + 3.0)) > 0.001]
+            events["snare"].append((off + 3.5, 110))
+        else:
+            # simpler fill
             if random.random() < 0.5:
-                # Snare roll
-                for t in [offset + 3.25, offset + 3.5, offset + 3.75]:
-                    events["snare"].append((t, gm_snare, 100))
+                for ft in [3.25, 3.5, 3.75]:
+                    events["snare"].append((off + ft, 100))
             else:
-                # Double kick
-                events["kick"].append((offset + 3.5, gm_kick, 100))
-                events["kick"].append((offset + 3.75, gm_kick, 100))
+                events["kick"].append((off + 3.5, 100))
+                events["kick"].append((off + 3.75, 100))
 
-        humanize_events(events, velocity_variation=velocity_var,
-                        timing_variation=timing_var)
-        var_str = f"var_{variation:02d}"
-        save_midi_files(events, output_dir, genre, tempo, var_str)
+    random_seed_base = 4000
+    for var_i in range(1, num_variations + 1):
+        random.seed(random_seed_base + var_i)
+        base_offset = (var_i - 1) * 16.0
 
+        ghost_k = []
+        if random.random() < 0.5:
+            ghost_k.append(0.75)
+
+        bar_A(base_offset, ghost_k)
+        bar_B(base_offset + 4.0, ghost_k)
+        bar_A(base_offset + 8.0, ghost_k)
+        bar_C(base_offset + 12.0, ghost_k)
+
+    humanize_instrument_events(events, velocity_var, timing_var)
+    final_dir = os.path.join(output_dir, genre)
+    save_instrument_midis(events, final_dir, genre, tempo)
+    return final_dir
+
+########################################
+# Usage Example
+########################################
 
 if __name__ == "__main__":
-    # Example usage (uncomment to run directly):
-    # base_path = "/Users/<username>/Production Library/Libraries/Ableton/User Library/MIDI Clips"
-    # out_dir = prepare_output_directory(base_path)
-    #
-    # create_house_patterns(out_dir, num_variations=2)
-    # create_breaks_patterns(out_dir, num_variations=2)
-    # create_ukg_patterns(out_dir, num_variations=2)
-    # create_dnb_patterns(out_dir, num_variations=2)
+    # Example:
+    # out_dir = "/path/to/folder"
+    # create_house_patterns(out_dir, num_variations=5)
+    # create_breaks_patterns(out_dir, num_variations=5)
+    # create_ukg_patterns(out_dir, num_variations=5)
+    # create_dnb_patterns(out_dir, num_variations=5)
     pass
