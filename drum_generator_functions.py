@@ -1,3 +1,13 @@
+import random
+
+# General MIDI drum note constants
+GM_KICK    = 36  # C1: Bass Drum 1
+GM_SNARE   = 38  # D1: Acoustic Snare
+GM_CLAP    = 39  # Eb1: Hand Clap
+GM_CHH     = 42  # F#1: Closed Hi-Hat
+GM_OHH     = 46  # Bb1: Open Hi-Hat
+GM_RIDE    = 51  # Db2: Ride Cymbal 1
+
 def create_house_patterns(num_variations=10, velocity_var=15, timing_var=0.02):
     """
     Generate and save 10 House drum pattern variations (4 bars each with a 4th-bar fill).
