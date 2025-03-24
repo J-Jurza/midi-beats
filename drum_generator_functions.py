@@ -1,4 +1,6 @@
+import os
 import random
+from midiutil import MIDIFile
 
 # General MIDI drum note constants
 GM_KICK    = 36  # C1: Bass Drum 1
@@ -7,6 +9,42 @@ GM_CLAP    = 39  # Eb1: Hand Clap
 GM_CHH     = 42  # F#1: Closed Hi-Hat
 GM_OHH     = 46  # Bb1: Open Hi-Hat
 GM_RIDE    = 51  # Db2: Ride Cymbal 1
+
+# Utils
+#############################################################################
+
+def humanize_events(events, velocity_variation=0, timing_variation=0.0):
+    for instrument, notes in events.items():
+        for i, (time, note, vel) in enumerate(notes):
+            if velocity_variation > 0:
+                vel += random.randint(-velocity_variation, velocity_variation)
+                vel = max(1, min(127, vel))
+            if timing_variation > 0:
+                time += random.uniform(-timing_variation, timing_variation)
+                if time < 0:
+                    time = 0
+            notes[i] = (time, note, vel)
+
+def save_midi_files(events, genre, tempo):
+    for instrument, notes in events.items():
+        instrument_dir = os.path.join(genre, instrument)
+        os.makedirs(instrument_dir, exist_ok=True)
+        filename = f"{genre}_{instrument}".lower()
+        file_path = os.path.join(instrument_dir, f"{filename}.mid")
+
+        midi = MIDIFile(1)
+        midi.addTempo(track=0, time=0, tempo=tempo)
+        channel = 9
+        for (time, note, vel) in notes:
+            duration = 0.1
+            midi.addNote(track=0, channel=channel, pitch=note,
+                         time=time, duration=duration, volume=vel)
+        with open(file_path, 'wb') as f:
+            midi.writeFile(f)
+
+# Pattern generators (to be imported individually)
+#############################################################################
+
 
 def create_house_patterns(num_variations=10, velocity_var=15, timing_var=0.02):
     """
