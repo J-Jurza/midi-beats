@@ -117,13 +117,10 @@ Pull requests and feature ideas welcome! Please open an issue to discuss larger 
 
 ## 📄 License
 
-This project is open-source under the MIT License.
 
 ---
 
 ## 🎧 Author
 
 Made with ❤️ for rhythm nerds by **Honzik**.
-
-Let the groove guide you.
 
