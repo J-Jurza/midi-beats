@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midi-beats"
+version = "0.2.0"
+description = "Procedural ABAC drum MIDI pattern generator for DAW workflows"
+readme = "readme.md"
+requires-python = ">=3.10"
+dependencies = [
+    "midiutil>=1.2.1",
+]
+
+[project.scripts]
+midi-beats = "midi_beats.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midi_beats*"]

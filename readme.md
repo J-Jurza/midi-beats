@@ -1,126 +1,152 @@
-# 🥁 MIDI Drum Pattern Generator
+# MIDI Drum Pattern Generator
 
-A Python-based generator for classic electronic drum patterns across multiple genres including **House**, **Breaks**, **UK Garage**, and **Drum & Bass**. Generates 4-bar `ABAC` loop sequences and outputs **separate MIDI clips per instrument** to be easily imported into DAWs like Ableton Live.
+A Python-based generator for classic electronic drum patterns across **House**, **Breaks**, **UK Garage**, and **Drum & Bass**. Each variation is a **4-bar ABAC** loop (16 beats) exported as **separate MIDI clips per instrument** for DAWs like Ableton Live.
 
 ---
 
-## 🎛 Features
+## Features
 
-- Genre-specific groove logic (House, Breaks, UKG, DnB)
+- Genre-specific groove logic: `house`, `breaks`, `ukg`, `dnb`
 - ABAC loop structure per variation:
-  - A = base pattern  
-  - B = mini fill  
-  - C = full fill
-- Humanisation for timing and velocity
-- Outputs individual MIDI clips per instrument (kick, snare, hats, etc.)
-- Cleanly structured functions for reuse and extension
-- Configurable output directory and loop count
+  - **A** = base pattern
+  - **B** = mini fill
+  - **C** = full fill (including amen-style fragments on breaks/dnb)
+- Humanisation for timing and velocity (seeded when using `--seed`)
+- Per-variation folders with `manifest.json` metadata
+- CLI and library API
 
 ---
 
-## 📂 Project Structure
+## Project structure
 
 ```
 .
-├── drum_pattern_generator.py       # Core generation logic and functions
-├── midi_drum_pattern_generator.ipynb  # Jupyter Notebook interface for generation
-├── README.md                       # This file
-└── [Generated MIDI Folders]        # Output: separate .mid files per instrument
+├── midi_beats/                 # Package (core, genres, pipeline, CLI)
+│   ├── core/                   # Events, humanize, MIDI export
+│   ├── genres/                 # house, breaks, ukg, dnb
+│   └── pipeline.py
+├── drum_pattern_generator.py   # Backward-compatible facade
+├── midi_drum_pattern_generator.ipynb
+├── tests/
+├── requirements.txt
+└── readme.md
 ```
 
 ---
 
-## 🚀 Getting Started
+## Getting started
 
-### 1. Clone this repo
-
-```bash
-git clone https://github.com/your-username/drum-pattern-generator.git
-cd drum-pattern-generator
-```
-
-### 2. Install dependencies
-
-This project requires Python 3.8+ and [`midiutil`](https://pypi.org/project/MIDIUtil/):
+### Install
 
 ```bash
-pip install midiutil
+git clone https://github.com/j-jurza/midi-beats.git
+cd midi-beats
+pip install -r requirements.txt
 ```
 
-### 3. Run via Jupyter Notebook
+### CLI
 
-Launch the notebook interface:
+```bash
+python -m midi_beats house -o ./output -n 5 --seed 42 -v
+python -m midi_beats breaks -o ./output -n 3 --seed 42
+python -m midi_beats --all-genres -o ./output -n 5 --seed 42   # not supported; run per genre
+```
+
+Generate all genres:
+
+```bash
+for g in house breaks ukg dnb; do python -m midi_beats $g -o ./output -n 5 --seed 42; done
+```
+
+Legacy concatenated export (one timeline per instrument, `house_kick.mid` naming):
+
+```bash
+python -m midi_beats house -o ./output -n 5 --concatenated
+```
+
+### Python API
+
+```python
+from midi_beats import generate_midi_patterns, generate_events, list_genres
+
+print(list_genres())  # ['breaks', 'dnb', 'house', 'ukg']
+
+events = generate_events("ukg", variation_index=1, seed_base=1000)
+paths = generate_midi_patterns("house", "./output", num_variations=5, seed_base=1000)
+```
+
+Backward-compatible imports still work:
+
+```python
+from drum_pattern_generator import generate_midi_patterns, create_breaks_patterns
+```
+
+### Jupyter notebook
 
 ```bash
 jupyter notebook midi_drum_pattern_generator.ipynb
 ```
 
-Inside the notebook:
-
-```python
-from drum_pattern_generator import (
-    create_house_patterns,
-    create_breaks_patterns,
-    create_ukg_patterns,
-    create_dnb_patterns
-)
-
-output_dir = "/your/ableton/user/library/path"
-create_house_patterns(output_dir)
-create_breaks_patterns(output_dir)
-create_ukg_patterns(output_dir)
-create_dnb_patterns(output_dir)
-```
-
 ---
 
-## 📆 Output
+## Output layout
 
-Each function creates:
-- A genre folder inside the output directory (e.g. `house/`, `breaks/`, etc.)
-- Separate `.mid` files for each instrument:
+**Per variation (default):**
 
 ```
-<output_dir>/
+output/
 ├── house/
-│   ├── house_kick.mid
-│   ├── house_snare.mid
+│   ├── variation_1/
+│   │   ├── kick_house_1.mid
+│   │   ├── snare_house_1.mid
+│   │   ├── hats_house_1.mid
+│   │   └── manifest.json
+│   └── variation_2/
+│       └── ...
+├── breaks/
 │   └── ...
-├── dnb/
-│   ├── dnb_kick.mid
-│   ├── dnb_chh.mid
-│   └── ...
-...
 ```
 
-Import them directly into your DAW and loop to your heart’s content.
+Each MIDI clip starts at **beat 0** and spans **4 bars** (16 beats). Import into your DAW and loop.
 
 ---
 
-## 🛠️ Customisation
+## Customisation
 
-You can tweak these parameters:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `num_variations` | 5 | Number of ABAC loops |
+| `velocity_var` | 15 | Max velocity humanization |
+| `timing_var` | 0.02 | Max timing shift (beats) |
+| `tempo` | genre default | BPM metadata in MIDI |
+| `seed_base` | None | Reproducible patterns + humanization |
+| `lock_backbeat` | False | Align kick/snare timing jitter |
 
-- `output_dir`: Path to save generated MIDI clips
-- `num_variations`: Number of ABAC loops per genre
-- `velocity_var`: Max variation applied to velocity (default = 15)
-- `timing_var`: Max timing shift in beats (default = 0.02)
-- `tempo`: Optional, controls tempo metadata in exported files
-
----
-
-## 👥 Contributing
-
-Pull requests and feature ideas welcome! Please open an issue to discuss larger changes first.
+Genre default tempos: House 120, Breaks 130, UKG 132, DnB 174.
 
 ---
 
-## 📄 License
+## Development
 
+```bash
+git checkout cursor/development-6fd2
+python3 -m unittest discover -s tests -v
+```
 
 ---
 
-## 🎧 Author
+## Contributing
 
-Made with ❤️ for rhythm nerds by **Honzik**.
+Pull requests welcome. Open an issue for larger changes.
 
+---
+
+## License
+
+MIT (see LICENSE)
+
+---
+
+## Author
+
+Made for rhythm nerds by **Honzik**.
