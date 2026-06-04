@@ -1,2 +1,25 @@
+# MIDI output
 *.mid
-__pycache__
+output/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Pattern catalog (generated from seeds)
+data/patterns.db
+data/patterns.parquet
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor / AI assistant local config
+.claude/
+.claude/settings.json
+.cursor/
+.cursor/settings.json
