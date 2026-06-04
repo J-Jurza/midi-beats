@@ -20,6 +20,7 @@
         <input id="seed" type="number" placeholder="random" />
       </label>
       <button id="btn-gen" type="button">Generate</button>
+      <button id="btn-export" type="button" class="accent">Export MIDI</button>
     </div>
   </header>
 
@@ -32,6 +33,13 @@
     <button class="slot-btn" data-slot="FILL2">FILL 2</button>
   </section>
 
+  <section class="action-row">
+    <span class="label">EDIT</span>
+    <button id="btn-mutate-b" type="button">Mutate → VAR B</button>
+    <button id="btn-mutate-c" type="button">Mutate → VAR C</button>
+    <span class="hint">Click pads to toggle steps</span>
+  </section>
+
   <section class="chain-preview">
     <span class="label">PHRASE</span>
     <div id="chain-display"></div>
@@ -42,6 +50,7 @@
 
   <footer class="foot">
     <span id="status">Loading…</span>
+    <span id="export-msg" class="hint"></span>
     <span id="pattern-id" class="hint"></span>
   </footer>
   <script src="/static/app.js"></script>
