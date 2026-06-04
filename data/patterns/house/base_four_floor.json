@@ -1,0 +1,17 @@
+{
+  "id": "house_base_four_floor",
+  "name": "House four-on-floor base",
+  "genre": "house",
+  "slot_role": "base",
+  "tags": ["house", "four-on-floor", "base"],
+  "tracks": {
+    "kick": { "steps": [0, 4, 8, 10, 12], "default_velocity": 100 },
+    "snare": { "steps": [4, 12], "default_velocity": 110 },
+    "clap": { "steps": [4, 12], "default_velocity": 110 },
+    "chh": {
+      "steps": [0, 2, 4, 6, 8, 10, 12, 14],
+      "default_velocity": 90
+    },
+    "ohh": { "steps": [2, 6, 10, 14], "default_velocity": 100 }
+  }
+}

@@ -1,178 +1,77 @@
-# Step Sequencer Visualizer — Design Plan
+# Step Sequencer Visualizer — Design Plan (TR-8 workflow)
 
-## Goal
+See also: **`PATTERN_MODEL_AND_STORAGE.md`** (slots, fills, JSON vs SQLite).
 
-A minimal, drum-machine-style UI (Elektron Beats / TR-909 inspired) that displays generated patterns on a **16-step grid** per channel, with small illuminated pads for active steps.
+## Mental model (Roland TR-8S)
 
-This is a **read-only preview** of `EventMap` data (and optional live regeneration), not a full DAW.
+- **Pattern** = one groove preset (tempo, genre, kit).
+- **Variations A–H** = eight **independent 1-bar** (16-step) grids.
+- **Fill 1 / Fill 2** = two **1-bar** fills; triggered manually or auto every N bars.
+- **Our ABAC chain** = pre-composed **4-bar loop** (A→B→A→C) for Ableton — not how TR-8 plays live, but export-friendly.
+
+The UI shows **one slot at a time** (16 steps). The chain row shows how slots assemble for MIDI export.
 
 ---
 
-## Phase 1 — Data layer (backend, no UI)
+## UI layout
 
-### 1.1 Grid quantization module
-
-Add `midi_beats/core/grid.py`:
-
-```python
-STEPS_PER_BAR = 16   # 16th-note steps
-STEPS_PER_LOOP = 64  # 4 bars × 16 steps
-
-def events_to_step_grid(
-    events: EventMap,
-    steps: int = STEPS_PER_LOOP,
-    instruments: tuple[str, ...] | None = None,
-) -> dict[str, list[StepCell]]:
+```text
+┌─ PATTERN house_1 ─ 120 BPM ────────────────────────────┐
+│  [A][B][C][D][E][F][G][H]    [F1][F2]   ← active = green
+├────────────────────────────────────────────────────────┤
+│  KICK │■│□│□│□│■│□│□│□│■│□│■│□│■│□│□│□│  10px cells
+│  SNR  │□│□│□│□│■│□│□│□│□│□│□│□│■│□│□│□│
+│  CHH  │■│■│■│■│■│■│■│■│■│■│■│■│■│■│■│■│
+├────────────────────────────────────────────────────────┤
+│  CHAIN  [A]─[B]─[A]─[C]     Export: ●Chain ○Slots     │
+│  AUTO FILL: every [4▼] bars → [FILL1▼]                  │
+│  [Gen] [Mutate B] [Import seed] [Export MIDI]          │
+└────────────────────────────────────────────────────────┘
 ```
 
-- Map beat time `t` → step index `round(t * 4)` clamped to `[0, steps-1]`
-- `StepCell`: `{ active: bool, velocity: int | None }` (velocity drives LED brightness later)
-- Multiple hits on same step: keep **max velocity**
-
-### 1.2 Manifest extension
-
-Include grid snapshot in `manifest.json` (optional flag) for offline preview without re-parsing MIDI.
-
-### 1.3 API endpoint shape (if web)
-
-```json
-{
-  "genre": "house",
-  "variation": 1,
-  "steps": 64,
-  "channels": [
-    { "id": "kick", "label": "KICK", "steps": [{"on": true, "vel": 100}, ...] }
-  ]
-}
-```
-
-**Deliverable:** `events_to_step_grid()` + unit tests (known pattern → expected step indices).
+- **Pad grid** = `events_to_step_grid(pattern.get_slot(active))` from `midi_beats/core/grid.py`
+- **Slot buttons** = `DrumPattern.slots` keys
+- **CHAIN** = `DrumPattern.chain` (editable preset)
+- **Gen** = `generate_pattern_for_genre()` ; **Import** = `PatternStore.get_slot_events()`
 
 ---
 
-## Phase 2 — Static web visualizer (recommended first UI)
+## Implementation phases
 
-### Stack
-
-| Choice | Rationale |
-|--------|-----------|
-| **HTML + CSS + vanilla JS** or small **Vue/Svelte** | No heavy build for a grid |
-| Served from `midi_beats/visualizer/static/` | Open `index.html` or `python -m midi_beats.visualizer` |
-| Optional **FastAPI** wrapper | `GET /pattern?genre=house&seed=42&var=1` returns JSON grid |
-
-### Layout (Elektron-inspired)
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  HOUSE · var 1 · 120 BPM · seed 1000                    │
-├────┬────────────────────────────────────────────────────┤
-│ KCK│ ■ □ □ □ ■ □ □ □ ■ □ ■ □ ■ □ □ □  │ bar markers
-│ SNR│ □ □ □ □ ■ □ □ □ □ □ □ □ ■ □ □ □  │
-│ CLP│ ...                                                │
-│ HAT│ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■  │
-│ OHH│ ...                                                │
-└────┴────────────────────────────────────────────────────┘
-     │←── bar 1 ──→│←── bar 2 ──→│ ...
-```
-
-### Visual spec
-
-- **Cell size:** 10–12px square, 2px gap (dense like hardware)
-- **Inactive:** `#1a1a1a` border `#333`
-- **Active:** amber/orange `#f5a623` (house), genre accent optional
-- **Velocity:** opacity or inner glow `opacity = 0.4 + (vel/127)*0.6`
-- **Bar divisions:** vertical line every 16 steps; ABAC labels A|B|A|C above bar 1–4
-- **Font:** monospace labels, 10px, left column ~36px wide
-- **No skeuomorphism** — flat, high contrast, dark background `#0d0d0d`
-
-### Interactions (Phase 2)
-
-- Dropdown: genre, variation, seed
-- Button: **Regenerate** (calls Python via API or pre-baked JSON files)
-- Read-only grid (no editing in v1)
-
-**Deliverable:** `visualizer/` folder + `python -m midi_beats.visualizer --genre house --seed 42`.
+| Phase | Deliverable |
+|-------|-------------|
+| **1** | ✅ `grid.py`, `pattern_model.py`, `DrumPattern` |
+| **2** | Static HTML + `pattern.json` from `generate_pattern()` |
+| **3** | `python -m midi_beats.visualizer` (future package) |
+| **4** | Slot-level MIDI export + chain export toggle |
+| **5** | Click-to-edit steps → `step_grid_to_events` → re-export |
 
 ---
 
-## Phase 3 — Desktop-embedded (optional)
-
-- **Tkinter / PyQt** mini window using same `events_to_step_grid()` — single process, no server
-- Useful for notebook `%run` workflow beside Jupyter
-
----
-
-## Phase 4 — Editing & export round-trip (future)
-
-- Click toggles step → update `EventMap` → re-export MIDI
-- Requires deduping quantization error and snap tolerance config
-
----
-
-## Architecture diagram
+## Data flow
 
 ```mermaid
 flowchart LR
-  subgraph gen [Existing]
-    G[genre generators]
-    P[pipeline]
-    G --> P
-  end
-  subgraph viz [New]
-    GR[grid.py events_to_step_grid]
-    API[visualizer server optional]
-    UI[HTML step grid]
-    P --> GR
-    GR --> API
-    API --> UI
-    GR --> UI
-  end
+  DB[(patterns.db)]
+  JSON[data/patterns/*.json]
+  JSON --> DB
+  DB --> Gen[generate_house_pattern]
+  Gen --> DP[DrumPattern]
+  DP --> Grid[events_to_step_grid]
+  DP --> MIDI[generate_midi_patterns]
+  Grid --> UI[16-step UI]
 ```
 
 ---
 
-## File plan
+## Visual spec
 
-```
-midi_beats/
-  core/
-    grid.py              # Phase 1
-  visualizer/
-    __init__.py
-    __main__.py          # CLI to open browser
-    server.py            # Optional FastAPI
-    static/
-      index.html
-      style.css
-      app.js
-tests/
-  test_grid.py
-```
+- Cells: 10–12px, gap 2px, `#0d0d0d` background
+- Inactive `#1a1a1a`, active `#f5a623`, velocity → opacity
+- Bar line every 16 steps; labels A|B|A|C when chain export shown
 
 ---
 
-## Implementation order
+## Out of scope v1
 
-1. **grid.py + tests** (1–2 hours agent time)
-2. **Static HTML/CSS grid** with embedded sample JSON
-3. **CLI** `python -m midi_beats.visualizer house --seed 42` writes `pattern.json` and opens UI
-4. **FastAPI** only if browser needs live regeneration
-5. Notebook cell: display grid via `IPython.display.HTML`
-
----
-
-## Success criteria
-
-- User sees 4-bar ABAC pattern at a glance without opening a DAW
-- Kick on 1 and snare on 5/13 (steps 0, 4, 12 in 0-indexed 16ths) readable for house
-- Matches `generate_events()` output for same seed (golden test)
-- UI fits in ~400×200px per genre view
-
----
-
-## Out of scope (v1)
-
-- Audio preview
-- Swing visualization (Phase 5: offset steps 2.25 visually)
-- Multi-variation timeline scroll
-- Mobile layout
+- Audio preview, Scatter FX, step loop hold

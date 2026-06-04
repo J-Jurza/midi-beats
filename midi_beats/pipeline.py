@@ -19,7 +19,7 @@ from midi_beats.core.events import (
 )
 from midi_beats.core.humanize import humanize_events
 from midi_beats.core.midi_export import build_midi_files
-from midi_beats.genres.registry import get_genre
+from midi_beats.genres.registry import generate_pattern_for_genre, get_genre
 
 
 class ExportLayout(str, Enum):
@@ -43,24 +43,34 @@ class ExportConfig:
     verbose: bool = False
 
 
+def generate_pattern(
+    genre: str,
+    variation_index: int = 1,
+    seed_base: int | None = None,
+    *,
+    pattern_store=None,
+):
+    """TR-8 slot model: A/B/C + FILL1/FILL2 with ABAC chain."""
+    config = get_genre(genre)
+    kwargs = dict(variation_index=variation_index, seed_base=seed_base)
+    if pattern_store is not None and genre == "house":
+        kwargs["pattern_store"] = pattern_store
+    return config.pattern_generator(**kwargs)
+
+
 def generate_events(
     genre: str,
     variation_index: int = 1,
     seed_base: int | None = None,
     *,
     normalize: bool = True,
+    pattern_store=None,
 ) -> EventMap:
-    """
-    Generate one ABAC variation (16 beats).
-
-    Events are always composed starting at beat 0 (no leading silence).
-    """
-    config = get_genre(genre)
-    events = config.generator(
-        variation_index=variation_index,
-        seed_base=seed_base,
-        base_offset=0.0,
+    """Generate one ABAC chain (16 beats) from TR-8 slots."""
+    pattern = generate_pattern(
+        genre, variation_index, seed_base, pattern_store=pattern_store
     )
+    events = pattern.to_chain_events()
     if normalize:
         events = normalize_to_bar_zero(events, 0.0)
     return events
@@ -118,6 +128,7 @@ def export_midi(
     seed_base: int | None = None,
     write_manifest: bool = True,
     legacy_names: bool = False,
+    pattern_meta: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Write per-instrument MIDI files for one variation."""
     midi_files = build_midi_files(events, tempo=tempo, skip_empty=skip_empty)
@@ -139,6 +150,8 @@ def export_midi(
             },
             "files": saved,
         }
+        if pattern_meta is not None:
+            manifest.update(pattern_meta)
         _write_manifest(os.path.join(output_dir, "manifest.json"), manifest)
 
     return saved
@@ -209,7 +222,8 @@ def generate_midi_patterns(
                 print(f"    {inst}: {path}")
     else:
         for var in range(1, num_variations + 1):
-            events = generate_events(config.name, var, seed_base)
+            pattern = generate_pattern(config.name, var, seed_base)
+            events = pattern.to_chain_events()
             humanize_events(
                 events,
                 velocity_variation=velocity_var,
@@ -227,6 +241,7 @@ def generate_midi_patterns(
                 skip_empty=skip_empty_instruments,
                 seed_base=seed_base,
                 write_manifest=write_manifest,
+                pattern_meta=pattern.to_manifest_extras(),
             )
             saved_all[var] = saved
             if verbose:
