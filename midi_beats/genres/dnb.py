@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from midi_beats.core.events import EventMap
-from midi_beats.core.mutate import MutateKind
 from midi_beats.core.pattern_model import ChainPreset, DrumPattern
 from midi_beats.genres.base import (
     append_hits,
@@ -25,6 +24,7 @@ def generate_dnb_pattern(
     seed_base: int | None = None,
     *,
     chain_preset: ChainPreset | str = ChainPreset.ABAC,
+    pattern_catalog=None,
 ) -> DrumPattern:
     rng = make_rng(seed_base, variation_index)
     ghost_kicks: list[float] = []
@@ -48,6 +48,8 @@ def generate_dnb_pattern(
         chain_preset=chain_preset,
         use_amen_for_c=True,
         seed_base=seed_base,
+        pattern_id=f"dnb_{variation_index}",
+        pattern_catalog=pattern_catalog,
     )
 
 

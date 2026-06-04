@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from midi_beats.core.mutate import MutateKind
-from midi_beats.library.parquet_store import PatternCatalog
+from midi_beats.library.ingest import load_default_catalog
 from midi_beats.visualizer.pattern_bridge import (
     export_ui_pattern,
     generate_ui_pattern,
@@ -23,7 +23,7 @@ DEFAULT_EXPORT_DIR = Path(__file__).resolve().parents[2] / "output" / "ui_export
 
 
 class VisualizerHandler(BaseHTTPRequestHandler):
-    catalog: PatternCatalog | None = None
+    catalog = None
     export_dir: Path = DEFAULT_EXPORT_DIR
 
     def log_message(self, format, *args):
@@ -62,7 +62,7 @@ class VisualizerHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_header()
+        self.end_headers()
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -72,14 +72,31 @@ class VisualizerHandler(BaseHTTPRequestHandler):
             seed = params.get("seed", [None])[0]
             seed_base = int(seed) if seed not in (None, "", "null") else None
             chain = (params.get("chain") or ["ABAC"])[0]
-            catalog = self.catalog if genre == "house" else None
             payload = generate_ui_pattern(
                 genre,
                 seed_base=seed_base,
                 chain_preset=chain,
-                pattern_catalog=catalog,
+                pattern_catalog=self.catalog,
+                base_edited=False,
             )
             self._send_json(payload)
+            return
+
+        if parsed.path == "/api/catalog":
+            cat = self.catalog or load_default_catalog()
+            if cat is None:
+                self._send_json({"loaded": False})
+            else:
+                self._send_json(
+                    {
+                        "loaded": True,
+                        "path": str(cat.path),
+                        "by_genre": {
+                            g: len(cat.list_patterns(genre=g))
+                            for g in ("house", "breaks", "ukg", "dnb")
+                        },
+                    }
+                )
             return
 
         if parsed.path in ("/", "/index.html"):
@@ -87,8 +104,7 @@ class VisualizerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path.startswith("/static/"):
-            rel = parsed.path[len("/static/") :]
-            self._send_file(STATIC_DIR / rel)
+            self._send_file(STATIC_DIR / rel) if (rel := parsed.path[len("/static/") :]) else None
             return
 
         self.send_error(404)
@@ -102,21 +118,17 @@ class VisualizerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/mutate":
-            target = body.get("target", "B")
-            kind_name = body.get("kind", "mini")
-            kind = MutateKind(kind_name)
             try:
-                payload = mutate_slot(body, target, kind)
+                payload = mutate_slot(body, body.get("target", "B"), MutateKind(body.get("kind", "mini")))
                 self._send_json(payload)
-            except ValueError as e:
+            except (ValueError, KeyError) as e:
                 self._send_json({"error": str(e)}, 400)
             return
 
         if parsed.path == "/api/export":
             out = body.get("output_dir") or str(self.export_dir)
-            layout = body.get("layout", "both")
             try:
-                result = export_ui_pattern(body, out, layout=layout)
+                result = export_ui_pattern(body, out, layout=body.get("layout", "both"))
                 self._send_json({"ok": True, **result})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)}, 500)
@@ -125,7 +137,12 @@ class VisualizerHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/pattern/sync":
             try:
                 pattern = pattern_from_ui_state(body)
-                self._send_json(pattern_to_ui_payload(pattern))
+                self._send_json(
+                    pattern_to_ui_payload(
+                        pattern,
+                        base_edited=body.get("base_edited", False),
+                    )
+                )
             except Exception as e:
                 self._send_json({"error": str(e)}, 400)
             return
@@ -136,14 +153,16 @@ class VisualizerHandler(BaseHTTPRequestHandler):
 def run_server(
     host: str = "127.0.0.1",
     port: int = 8765,
-    catalog: PatternCatalog | None = None,
+    catalog=None,
     export_dir: str | Path | None = None,
 ) -> None:
-    VisualizerHandler.catalog = catalog
+    VisualizerHandler.catalog = catalog or load_default_catalog()
     if export_dir:
         VisualizerHandler.export_dir = Path(export_dir)
-    DEFAULT_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    VisualizerHandler.export_dir.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((host, port), VisualizerHandler)
     print(f"Step sequencer UI: http://{host}:{port}/")
-    print(f"MIDI export dir: {VisualizerHandler.export_dir}")
+    print(f"MIDI export: {VisualizerHandler.export_dir}")
+    if VisualizerHandler.catalog:
+        print(f"Pattern catalog: {VisualizerHandler.catalog.path}")
     server.serve_forever()

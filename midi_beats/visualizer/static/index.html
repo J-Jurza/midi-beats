@@ -24,6 +24,15 @@
     </div>
   </header>
 
+  <div id="banner" class="banner hidden" role="status"></div>
+
+  <section class="view-row">
+    <span class="label">GRID</span>
+    <button class="view-mode-btn active" data-mode="slot">1 bar (slot)</button>
+    <button class="view-mode-btn" data-mode="phrase">4 bar (phrase)</button>
+    <span id="catalog-info" class="hint"></span>
+  </section>
+
   <section class="slot-row">
     <span class="label">VIEW</span>
     <button class="slot-btn active" data-slot="BASE">BASE</button>
@@ -37,7 +46,7 @@
     <span class="label">EDIT</span>
     <button id="btn-mutate-b" type="button">Mutate → VAR B</button>
     <button id="btn-mutate-c" type="button">Mutate → VAR C</button>
-    <span class="hint">Click pads to toggle steps</span>
+    <span class="hint">Click = toggle · Shift+click = velocity · Phrase view = read-only</span>
   </section>
 
   <section class="chain-preview">

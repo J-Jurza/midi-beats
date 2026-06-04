@@ -37,24 +37,15 @@ def generate_house_pattern(
         append_hits(ev, "chh", offset, chh_list, 90)
         append_hits(ev, "ohh", offset, OHH_PAT, 100)
 
-    pattern = compose_from_base(
+    return compose_from_base(
         "house",
         base_bar,
         rng,
         chain_preset=chain_preset,
         seed_base=seed_base,
         pattern_id=f"house_{variation_index}",
+        pattern_catalog=pattern_catalog,
     )
-
-    if pattern_catalog is not None:
-        pid = pattern_catalog.random_pattern_id("house", rng)
-        if pid:
-            base_events = pattern_catalog.get_slot(pid, "A")
-            pattern.set_slot("BASE", base_events)
-            pattern.register_workflow_slots()
-            pattern.pattern_id = pid
-
-    return pattern
 
 
 def generate_house_events(

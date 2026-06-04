@@ -9,9 +9,7 @@ from midi_beats.core.events import EventMap, INSTRUMENTS
 from midi_beats.core.grid import STEPS_PER_BAR, StepCell, step_grid_to_events
 from midi_beats.core.mutate import MutateKind, mutate_bar
 from midi_beats.core.pattern_model import (
-    CHAIN_LABELS,
     CHAIN_SEQUENCES,
-    ChainPreset,
     DrumPattern,
     SLOT_BASE,
     SLOT_VAR_B,
@@ -20,6 +18,7 @@ from midi_beats.core.pattern_model import (
 )
 from midi_beats.genres.base import make_rng
 from midi_beats.genres.registry import generate_pattern_for_genre, get_genre
+from midi_beats.library.ingest import load_default_catalog
 from midi_beats.visualizer.serialize import pattern_to_ui_payload
 
 SLOT_ALIASES = {
@@ -34,7 +33,6 @@ def _resolve_slot(name: str) -> str:
 
 
 def ui_grid_to_events(grid_json: dict[str, list[dict]]) -> EventMap:
-    """Convert UI slot grids `{kick: [{on, vel}, ...]}` to EventMap."""
     cells: dict[str, list[StepCell]] = {}
     for inst in INSTRUMENTS:
         row = grid_json.get(inst)
@@ -44,11 +42,10 @@ def ui_grid_to_events(grid_json: dict[str, list[dict]]) -> EventMap:
             StepCell(on=bool(c.get("on")), velocity=c.get("vel") or 100)
             for c in row
         ]
-    return step_grid_to_events(cells, steps_per_bar=STEPS_PER_BAR)
+    return step_grid_to_events(cells, steps=STEPS_PER_BAR)
 
 
 def pattern_from_ui_state(data: dict[str, Any]) -> DrumPattern:
-    """Build pattern from client `slots` + metadata (preserves edits)."""
     genre = data["genre"]
     preset = resolve_chain_preset(data.get("chain_preset", "ABAC"))
     pattern = DrumPattern(
@@ -66,6 +63,15 @@ def pattern_from_ui_state(data: dict[str, Any]) -> DrumPattern:
     return pattern
 
 
+def _catalog_summary(catalog) -> dict | None:
+    if catalog is None:
+        return None
+    by_genre = {}
+    for g in ("house", "breaks", "ukg", "dnb"):
+        by_genre[g] = len(catalog.list_patterns(genre=g))
+    return {"path": str(catalog.path), "by_genre": by_genre}
+
+
 def generate_ui_pattern(
     genre: str,
     *,
@@ -73,17 +79,20 @@ def generate_ui_pattern(
     chain_preset: str = "ABAC",
     variation_index: int = 1,
     pattern_catalog=None,
+    base_edited: bool = False,
 ) -> dict[str, Any]:
+    catalog = pattern_catalog if pattern_catalog is not None else load_default_catalog()
     kwargs: dict[str, Any] = {
         "variation_index": variation_index,
         "seed_base": seed_base,
         "chain_preset": chain_preset,
+        "pattern_catalog": catalog,
     }
-    if pattern_catalog is not None:
-        kwargs["pattern_catalog"] = pattern_catalog
     pattern = generate_pattern_for_genre(genre, **kwargs)
     pattern.tempo = get_genre(genre).default_tempo
-    return pattern_to_ui_payload(pattern)
+    payload = pattern_to_ui_payload(pattern, base_edited=base_edited)
+    payload["catalog_patterns"] = _catalog_summary(catalog)
+    return payload
 
 
 def mutate_slot(
@@ -91,7 +100,6 @@ def mutate_slot(
     target: str,
     kind: MutateKind,
 ) -> dict[str, Any]:
-    """Re-mutate VAR B or C from current BASE (keeps BASE edits)."""
     pattern = pattern_from_ui_state(data)
     base = pattern.get_slot(SLOT_BASE)
     seed = data.get("seed_base")
@@ -101,7 +109,7 @@ def mutate_slot(
         raise ValueError(f"Cannot mutate slot {target!r}")
     pattern.set_slot(key, mutate_bar(base, kind, rng))
     pattern.register_workflow_slots()
-    return pattern_to_ui_payload(pattern)
+    return pattern_to_ui_payload(pattern, base_edited=data.get("base_edited", False))
 
 
 def export_ui_pattern(
@@ -112,7 +120,6 @@ def export_ui_pattern(
     velocity_var: int = 15,
     timing_var: float = 0.02,
 ) -> dict[str, Any]:
-    """Export edited pattern to MIDI on disk."""
     from midi_beats.pipeline import export_drum_pattern
 
     pattern = pattern_from_ui_state(data)

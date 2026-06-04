@@ -24,6 +24,7 @@ def generate_ukg_pattern(
     seed_base: int | None = None,
     *,
     chain_preset: ChainPreset | str = ChainPreset.ABAC,
+    pattern_catalog=None,
 ) -> DrumPattern:
     rng = make_rng(seed_base, variation_index)
 
@@ -43,6 +44,8 @@ def generate_ukg_pattern(
         rng,
         chain_preset=chain_preset,
         seed_base=seed_base,
+        pattern_id=f"ukg_{variation_index}",
+        pattern_catalog=pattern_catalog,
     )
 
 

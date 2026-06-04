@@ -1,0 +1,53 @@
+{
+  "id": "ukg_proc_1034",
+  "genre": "ukg",
+  "slot_role": "base",
+  "tags": [
+    "procedural",
+    "generated",
+    "ukg"
+  ],
+  "tracks": {
+    "kick": {
+      "steps": [
+        0,
+        7,
+        10
+      ],
+      "default_velocity": 100
+    },
+    "snare": {
+      "steps": [
+        4,
+        12
+      ],
+      "default_velocity": 110
+    },
+    "clap": {
+      "steps": [
+        4,
+        12
+      ],
+      "default_velocity": 110
+    },
+    "chh": {
+      "steps": [
+        0,
+        4,
+        8,
+        9,
+        12
+      ],
+      "default_velocity": 90
+    },
+    "ohh": {
+      "steps": [
+        2,
+        6,
+        14
+      ],
+      "default_velocity": 100
+    }
+  },
+  "name": "ukg procedural base 2"
+}

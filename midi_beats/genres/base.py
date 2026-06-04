@@ -69,6 +69,7 @@ def compose_from_base(
     seed_base: int | None = None,
     pattern_id: str | None = None,
     use_amen_for_c: bool = False,
+    pattern_catalog=None,
 ) -> DrumPattern:
     preset = resolve_chain_preset(chain_preset)
     pattern = DrumPattern(
@@ -92,6 +93,9 @@ def compose_from_base(
         pattern.set_slot("D", mutate_bar(base, kind_d, rng))
 
     pattern.register_workflow_slots()
+    if pattern_catalog is not None:
+        from midi_beats.genres.catalog_mix import apply_catalog_base
+        apply_catalog_base(pattern, pattern_catalog, genre, rng)
     return pattern
 
 
@@ -122,6 +126,9 @@ def compose_abac_pattern(
     if "D" in seq:
         pattern.set_slot("D", render_bar(bar_c or bar_a, 0.0))
     pattern.register_workflow_slots()
+    if pattern_catalog is not None:
+        from midi_beats.genres.catalog_mix import apply_catalog_base
+        apply_catalog_base(pattern, pattern_catalog, genre, rng)
     return pattern
 
 

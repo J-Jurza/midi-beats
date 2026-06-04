@@ -1,0 +1,43 @@
+{
+  "id": "breaks_proc_1017",
+  "genre": "breaks",
+  "slot_role": "base",
+  "tags": [
+    "procedural",
+    "generated",
+    "breaks"
+  ],
+  "tracks": {
+    "kick": {
+      "steps": [
+        0,
+        10,
+        14
+      ],
+      "default_velocity": 100
+    },
+    "snare": {
+      "steps": [
+        4,
+        5,
+        11,
+        12
+      ],
+      "default_velocity": 110
+    },
+    "chh": {
+      "steps": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14
+      ],
+      "default_velocity": 100
+    }
+  },
+  "name": "breaks procedural base 1"
+}

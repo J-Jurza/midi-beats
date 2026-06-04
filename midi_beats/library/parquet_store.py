@@ -49,25 +49,43 @@ class PatternCatalog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(self._load()).to_parquet(self.path, index=False)
 
-    def import_seed_file(self, path: str | Path, *, slot: str = "A") -> str:
-        seed = load_seed_json(path)
+
+    def import_seed_record(
+        self,
+        seed: dict,
+        *,
+        slot: str = "A",
+        source: str = "",
+    ) -> str:
+        """Import from an in-memory seed dict."""
+        from midi_beats.library.seed_io import seed_to_bar_events, validate_seed
+
+        validate_seed(seed)
         pattern_id = seed["id"]
         steps = _events_to_steps(seed_to_bar_events(seed))
+        import pandas as pd
+
         row = {
             "pattern_id": pattern_id,
             "genre": seed.get("genre", "unknown"),
             "slot": slot,
             "steps_json": json.dumps(steps),
             "tags": json.dumps(seed.get("tags", [])),
-            "source": str(path),
+            "source": source or seed.get("id", ""),
         }
-        import pandas as pd
-
         df = self._load()
         df = df[~((df["pattern_id"] == pattern_id) & (df["slot"] == slot))]
         self._df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         self._save()
         return pattern_id
+
+    def import_seed_file(self, path: str | Path, *, slot: str = "A") -> str:
+        from midi_beats.library.seed_io import load_seed_json
+        from midi_beats.library.seed_io import slot_from_seed
+
+        seed = load_seed_json(path)
+        slot_key = slot if slot != "A" else slot_from_seed(seed)
+        return self.import_seed_record(seed, slot=slot_key, source=str(path))
 
     def import_seed_directory(self, directory: str | Path) -> list[str]:
         ids = []

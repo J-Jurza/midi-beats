@@ -22,6 +22,7 @@ def generate_breaks_pattern(
     seed_base: int | None = None,
     *,
     chain_preset: ChainPreset | str = ChainPreset.ABAC,
+    pattern_catalog=None,
 ) -> DrumPattern:
     rng = make_rng(seed_base, variation_index)
     ghost_kicks: list[float] = []
@@ -43,6 +44,8 @@ def generate_breaks_pattern(
         chain_preset=chain_preset,
         use_amen_for_c=True,
         seed_base=seed_base,
+        pattern_id=f"breaks_{variation_index}",
+        pattern_catalog=pattern_catalog,
     )
 
 

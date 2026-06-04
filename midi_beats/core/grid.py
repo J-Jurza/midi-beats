@@ -8,6 +8,7 @@ from midi_beats.core.events import BEATS_PER_BAR, EventMap, INSTRUMENTS
 
 STEPS_PER_BAR = 16
 STEPS_PER_ABAC_CHAIN = STEPS_PER_BAR * 4
+SIXTEENTHS_PER_BEAT = STEPS_PER_BAR / BEATS_PER_BAR
 
 
 @dataclass
@@ -23,27 +24,39 @@ def beat_to_step(beat: float, steps_per_bar: int = STEPS_PER_BAR) -> int:
     return max(0, min(steps_per_bar - 1, step))
 
 
+def beat_to_phrase_step(beat: float, total_steps: int = STEPS_PER_ABAC_CHAIN) -> int:
+    """Map beat across a phrase (e.g. 16 beats) to 0..total_steps-1."""
+    idx = int(round(beat * SIXTEENTHS_PER_BEAT))
+    return max(0, min(total_steps - 1, idx))
+
+
 def events_to_step_grid(
     events: EventMap,
     *,
     steps: int = STEPS_PER_BAR,
+    max_beat: float | None = None,
     instruments: tuple[str, ...] | None = None,
 ) -> dict[str, list[StepCell]]:
     """
-    Quantize one bar of events to a 16-step grid per instrument.
+    Quantize events to a step grid per instrument.
 
-    Multiple hits on the same step keep the highest velocity.
+    For one bar use steps=16. For a 4-bar phrase use steps=64, max_beat=16.
     """
     insts = instruments or INSTRUMENTS
     grid: dict[str, list[StepCell]] = {
         inst: [StepCell(on=False) for _ in range(steps)] for inst in insts
     }
+    limit = max_beat if max_beat is not None else steps / SIXTEENTHS_PER_BEAT
+    use_phrase = steps > STEPS_PER_BAR
 
     for inst in insts:
         for beat, vel in events.get(inst, []):
-            if beat >= BEATS_PER_BAR:
+            if beat >= limit - 0.001:
                 continue
-            idx = beat_to_step(beat, steps)
+            if use_phrase:
+                idx = beat_to_phrase_step(beat, steps)
+            else:
+                idx = beat_to_step(beat, steps)
             cell = grid[inst][idx]
             if not cell.on or (cell.velocity or 0) < vel:
                 grid[inst][idx] = StepCell(on=True, velocity=vel)
@@ -54,13 +67,13 @@ def events_to_step_grid(
 def step_grid_to_events(
     grid: dict[str, list[StepCell]],
     *,
-    steps_per_bar: int = STEPS_PER_BAR,
+    steps: int = STEPS_PER_BAR,
 ) -> EventMap:
-    """Convert a 16-step grid back to beat/velocity events for one bar."""
+    """Convert a step grid back to beat/velocity events."""
     from midi_beats.core.events import empty_event_map
 
     events = empty_event_map()
-    step_len = BEATS_PER_BAR / steps_per_bar
+    step_len = 1.0 / SIXTEENTHS_PER_BEAT
     for inst, cells in grid.items():
         if inst not in events:
             continue

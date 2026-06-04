@@ -1,0 +1,51 @@
+{
+  "id": "dnb_proc_1051",
+  "genre": "dnb",
+  "slot_role": "base",
+  "tags": [
+    "procedural",
+    "generated",
+    "dnb"
+  ],
+  "tracks": {
+    "kick": {
+      "steps": [
+        0,
+        3,
+        10
+      ],
+      "default_velocity": 100
+    },
+    "snare": {
+      "steps": [
+        4,
+        5,
+        11,
+        12
+      ],
+      "default_velocity": 110
+    },
+    "chh": {
+      "steps": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "default_velocity": 100
+    }
+  },
+  "name": "dnb procedural base 3"
+}

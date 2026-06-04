@@ -216,3 +216,46 @@ select, input {
 .step.on:hover {
   filter: brightness(1.15);
 }
+
+.view-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.view-mode-btn {
+  background: var(--inactive);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.view-mode-btn.active {
+  border-color: var(--active);
+  color: var(--active);
+}
+
+.banner {
+  background: #3a2a08;
+  color: var(--active);
+  padding: 0.4rem 1rem;
+  font-size: 10px;
+  border-bottom: 1px solid var(--active-dim);
+}
+
+.banner.hidden {
+  display: none;
+}
+
+#catalog-info {
+  margin-left: auto;
+}
+
+.step:disabled {
+  cursor: default;
+}
