@@ -44,6 +44,19 @@ cd midi-beats
 pip install -r requirements.txt
 ```
 
+
+### Step sequencer UI
+
+```bash
+pip install -r requirements.txt
+python -m midi_beats.visualizer --import-seeds
+# Open http://127.0.0.1:8765/
+```
+
+- **BASE** — generated groove; **VAR B / VAR C** — mutations from base; **FILL 1/2** — aliases
+- Phrase chains: ABAC, AAAB, ABCB, AABB, ABCD, …
+- Pattern library: JSON seeds → Parquet (`data/patterns.parquet`)
+
 ### CLI
 
 ```bash

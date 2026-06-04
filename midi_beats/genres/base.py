@@ -1,19 +1,43 @@
-"""Shared fills and TR-8 slot / chain composition."""
+"""Base pattern + mutate workflow and phrase composition."""
 
 from __future__ import annotations
 
 import random
+from typing import Callable
 
 from midi_beats.core.events import EventMap, empty_event_map, merge_event_maps, shift_events
+from midi_beats.core.fills import (
+    apply_amen_partial_fill,
+    apply_mini_fill,
+    apply_snare_roll_fill,
+)
+from midi_beats.core.mutate import MutateKind, mutate_bar
 from midi_beats.core.pattern_model import (
     CHAIN_SEQUENCES,
     AutoFillConfig,
     ChainPreset,
     DrumPattern,
+    SLOT_BASE,
+    SLOT_VAR_B,
+    SLOT_VAR_C,
+    resolve_chain_preset,
 )
 
 RNG = random.Random
-BarRenderer = type  # Callable[[EventMap, float], None] — use callable in signatures below
+BarRenderer = Callable[[EventMap, float], None]
+
+# Re-export for genre modules
+__all__ = [
+    "append_hits",
+    "apply_mini_fill",
+    "apply_snare_roll_fill",
+    "apply_amen_partial_fill",
+    "compose_from_base",
+    "compose_abac_pattern",
+    "pattern_to_events",
+    "make_rng",
+    "render_bar",
+]
 
 
 def append_hits(
@@ -27,89 +51,77 @@ def append_hits(
         events[instrument].append((offset + t, velocity))
 
 
-def apply_mini_fill(
-    events: EventMap,
-    offset: float,
-    rng: RNG,
-    snare_velocity: int = 110,
-    kick_velocity: int = 100,
-) -> None:
-    if rng.random() < 0.5:
-        events["snare"].append((offset + 3.75, snare_velocity))
-    else:
-        events["kick"].append((offset + 3.5, kick_velocity))
-        events["kick"].append((offset + 3.75, kick_velocity))
-
-
-def apply_snare_roll_fill(
-    events: EventMap,
-    offset: float,
-    rng: RNG,
-    kick_velocity: int = 100,
-    roll_velocity: int = 100,
-) -> None:
-    if rng.random() < 0.5:
-        for t in (3.25, 3.5, 3.75):
-            events["snare"].append((offset + t, roll_velocity))
-    else:
-        events["kick"].append((offset + 3.5, kick_velocity))
-        events["kick"].append((offset + 3.75, kick_velocity))
-
-
-def apply_amen_partial_fill(
-    events: EventMap,
-    offset: float,
-    rng: RNG,
-) -> bool:
-    if rng.random() >= 0.5:
-        return False
-
-    events["kick"] = [e for e in events["kick"] if abs(e[0] - offset) > 0.001]
-    events["snare"].append((offset + 0.0, 100))
-    events["snare"].append((offset + 0.25, 90))
-    events["kick"].append((offset + 0.5, 100))
-    events["snare"] = [
-        e for e in events["snare"] if abs(e[0] - (offset + 3.0)) > 0.001
-    ]
-    events["snare"].append((offset + 3.5, 110))
-    return True
-
-
-def render_bar(render, offset: float = 0.0) -> EventMap:
+def render_bar(render: BarRenderer, offset: float = 0.0) -> EventMap:
     events = empty_event_map()
     render(events, offset)
     return events
 
 
-def compose_abac_pattern(
+def compose_from_base(
     genre: str,
-    bar_a,
-    bar_b=None,
-    bar_c=None,
+    base_bar: BarRenderer,
+    rng: RNG,
     *,
-    chain: tuple[str, ...] = CHAIN_SEQUENCES[ChainPreset.ABAC],
+    mutate_b: MutateKind = MutateKind.MINI,
+    mutate_c: MutateKind = MutateKind.FULL,
+    mutate_d: MutateKind | None = None,
+    chain_preset: ChainPreset | str = ChainPreset.ABAC,
     seed_base: int | None = None,
     pattern_id: str | None = None,
+    use_amen_for_c: bool = False,
 ) -> DrumPattern:
-    """
-    TR-8 mapping:
-      A  = base groove
-      B  = variation / mini fill  → FILL1
-      C  = full fill              → FILL2
-    Default chain ABAC = Roland-style 4-bar song form for Ableton export.
-    """
+    preset = resolve_chain_preset(chain_preset)
     pattern = DrumPattern(
         genre=genre,
-        chain=chain,
+        chain=CHAIN_SEQUENCES[preset],
+        chain_preset=preset,
         seed_base=seed_base,
         pattern_id=pattern_id,
         auto_fill=AutoFillConfig(interval_bars=4, slot="FILL1"),
     )
-    pattern.set_slot("A", render_bar(bar_a, 0.0))
-    pattern.set_slot("B", render_bar(bar_b or bar_a, 0.0))
-    pattern.set_slot("C", render_bar(bar_c or bar_a, 0.0))
-    pattern.set_slot("FILL1", pattern.get_slot("B"))
-    pattern.set_slot("FILL2", pattern.get_slot("C"))
+
+    base = render_bar(base_bar, 0.0)
+    pattern.set_slot(SLOT_BASE, base)
+
+    kind_c = MutateKind.AMEN if use_amen_for_c else mutate_c
+    pattern.set_slot(SLOT_VAR_B, mutate_bar(base, mutate_b, rng))
+    pattern.set_slot(SLOT_VAR_C, mutate_bar(base, kind_c, rng))
+
+    if mutate_d is not None or "D" in pattern.chain:
+        kind_d = mutate_d or MutateKind.FULL
+        pattern.set_slot("D", mutate_bar(base, kind_d, rng))
+
+    pattern.register_workflow_slots()
+    return pattern
+
+
+def compose_abac_pattern(
+    genre: str,
+    bar_a: BarRenderer,
+    bar_b: BarRenderer | None = None,
+    bar_c: BarRenderer | None = None,
+    *,
+    chain: tuple[str, ...] | None = None,
+    chain_preset: ChainPreset | str = ChainPreset.ABAC,
+    seed_base: int | None = None,
+    pattern_id: str | None = None,
+) -> DrumPattern:
+    preset = resolve_chain_preset(chain_preset)
+    seq = chain or CHAIN_SEQUENCES[preset]
+    pattern = DrumPattern(
+        genre=genre,
+        chain=seq,
+        chain_preset=preset,
+        seed_base=seed_base,
+        pattern_id=pattern_id,
+        auto_fill=AutoFillConfig(interval_bars=4, slot="FILL1"),
+    )
+    pattern.set_slot(SLOT_BASE, render_bar(bar_a, 0.0))
+    pattern.set_slot(SLOT_VAR_B, render_bar(bar_b or bar_a, 0.0))
+    pattern.set_slot(SLOT_VAR_C, render_bar(bar_c or bar_a, 0.0))
+    if "D" in seq:
+        pattern.set_slot("D", render_bar(bar_c or bar_a, 0.0))
+    pattern.register_workflow_slots()
     return pattern
 
 
@@ -118,7 +130,6 @@ def pattern_to_events(
     target: EventMap | None = None,
     base_offset: float = 0.0,
 ) -> EventMap:
-    """Flatten pattern chain into an EventMap (optional offset for concatenation)."""
     out = target if target is not None else empty_event_map()
     chained = pattern.to_chain_events()
     if base_offset:

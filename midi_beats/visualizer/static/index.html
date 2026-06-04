@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MIDI Beats — Step Sequencer</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>MIDI BEATS</h1>
+    <div class="meta">
+      <label>Genre
+        <select id="genre"></select>
+      </label>
+      <label>Chain
+        <select id="chain"></select>
+      </label>
+      <label>Seed
+        <input id="seed" type="number" placeholder="random" />
+      </label>
+      <button id="btn-gen" type="button">Generate</button>
+    </div>
+  </header>
+
+  <section class="slot-row">
+    <span class="label">VIEW</span>
+    <button class="slot-btn active" data-slot="BASE">BASE</button>
+    <button class="slot-btn" data-slot="B">VAR B</button>
+    <button class="slot-btn" data-slot="C">VAR C</button>
+    <button class="slot-btn" data-slot="FILL1">FILL 1</button>
+    <button class="slot-btn" data-slot="FILL2">FILL 2</button>
+  </section>
+
+  <section class="chain-preview">
+    <span class="label">PHRASE</span>
+    <div id="chain-display"></div>
+    <span id="chain-label" class="hint"></span>
+  </section>
+
+  <main id="grid" class="grid"></main>
+
+  <footer class="foot">
+    <span id="status">Loading…</span>
+    <span id="pattern-id" class="hint"></span>
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

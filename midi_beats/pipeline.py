@@ -25,6 +25,8 @@ from midi_beats.genres.registry import generate_pattern_for_genre, get_genre
 class ExportLayout(str, Enum):
     PER_VARIATION = "per_variation"
     CONCATENATED = "concatenated"
+    SLOTS = "slots"
+    BOTH = "both"
 
 
 @dataclass
@@ -48,13 +50,18 @@ def generate_pattern(
     variation_index: int = 1,
     seed_base: int | None = None,
     *,
+    chain_preset: str | None = None,
+    pattern_catalog=None,
     pattern_store=None,
 ):
-    """TR-8 slot model: A/B/C + FILL1/FILL2 with ABAC chain."""
+    """BASE + mutated slots, composed into a phrase chain."""
     config = get_genre(genre)
     kwargs = dict(variation_index=variation_index, seed_base=seed_base)
-    if pattern_store is not None and genre == "house":
-        kwargs["pattern_store"] = pattern_store
+    if chain_preset is not None:
+        kwargs["chain_preset"] = chain_preset
+    catalog = pattern_catalog or pattern_store
+    if catalog is not None:
+        kwargs["pattern_catalog"] = catalog
     return config.pattern_generator(**kwargs)
 
 
@@ -157,6 +164,38 @@ def export_midi(
     return saved
 
 
+
+def export_slots_midi(
+    pattern,
+    output_dir: str,
+    genre: str,
+    variation_index: int,
+    tempo: float,
+    *,
+    skip_empty: bool = True,
+) -> dict[str, dict[str, str]]:
+    """Export each UI slot as 1-bar MIDI files."""
+    from midi_beats.core.pattern_model import UI_VIEW_SLOTS
+
+    os.makedirs(output_dir, exist_ok=True)
+    saved_all: dict[str, dict[str, str]] = {}
+    for slot in UI_VIEW_SLOTS:
+        events = pattern.get_slot(slot)
+        if skip_empty and not any(events.values()):
+            continue
+        slot_dir = os.path.join(output_dir, f"slot_{slot}")
+        midi_files = build_midi_files(events, tempo=tempo, skip_empty=skip_empty)
+        saved_all[slot] = _save_midi_files(
+            midi_files,
+            slot_dir,
+            genre,
+            variation_index,
+            legacy_names=False,
+        )
+    return saved_all
+
+
+
 def generate_midi_patterns(
     genre: str,
     output_dir: str,
@@ -232,17 +271,29 @@ def generate_midi_patterns(
                 lock_backbeat=lock_backbeat,
             )
             var_dir = os.path.join(output_dir, config.name, f"variation_{var}")
-            saved = export_midi(
-                events,
-                var_dir,
-                config.name,
-                variation_index=var,
-                tempo=bpm,
-                skip_empty=skip_empty_instruments,
-                seed_base=seed_base,
-                write_manifest=write_manifest,
-                pattern_meta=pattern.to_manifest_extras(),
-            )
+            saved = {}
+            if export_layout in (ExportLayout.PER_VARIATION, ExportLayout.BOTH):
+                saved = export_midi(
+                    events,
+                    var_dir,
+                    config.name,
+                    variation_index=var,
+                    tempo=bpm,
+                    skip_empty=skip_empty_instruments,
+                    seed_base=seed_base,
+                    write_manifest=write_manifest,
+                    pattern_meta=pattern.to_manifest_extras(),
+                )
+            if export_layout in (ExportLayout.SLOTS, ExportLayout.BOTH):
+                slots_dir = os.path.join(var_dir, "slots")
+                export_slots_midi(
+                    pattern,
+                    slots_dir,
+                    config.name,
+                    var,
+                    bpm,
+                    skip_empty=skip_empty_instruments,
+                )
             saved_all[var] = saved
             if verbose:
                 print(f"  variation {var}:")

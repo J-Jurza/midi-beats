@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 from midi_beats.core.events import EventMap
-from midi_beats.core.pattern_model import DrumPattern
-from typing import TYPE_CHECKING
-
+from midi_beats.core.pattern_model import ChainPreset, DrumPattern
 from midi_beats.genres.base import (
     append_hits,
-    apply_mini_fill,
-    apply_snare_roll_fill,
-    compose_abac_pattern,
+    compose_from_base,
     make_rng,
     pattern_to_events,
 )
@@ -24,7 +20,9 @@ OHH_PAT = [0.5, 1.5, 2.5, 3.5]
 def generate_house_pattern(
     variation_index: int = 1,
     seed_base: int | None = None,
-    pattern_store=None,
+    *,
+    chain_preset: ChainPreset | str = ChainPreset.ABAC,
+    pattern_catalog=None,
 ) -> DrumPattern:
     rng = make_rng(seed_base, variation_index)
     if rng.random() < 0.5:
@@ -32,35 +30,30 @@ def generate_house_pattern(
     else:
         chh_list = [x * 0.5 for x in range(8)]
 
-    def bar_a(ev, offset: float) -> None:
+    def base_bar(ev, offset: float) -> None:
         append_hits(ev, "kick", offset, KICK_PAT, 100)
         append_hits(ev, "snare", offset, SNARE_PAT, 110)
         append_hits(ev, "clap", offset, CLAP_PAT, 110)
         append_hits(ev, "chh", offset, chh_list, 90)
         append_hits(ev, "ohh", offset, OHH_PAT, 100)
 
-    def bar_b(ev, offset: float) -> None:
-        bar_a(ev, offset)
-        apply_mini_fill(ev, offset, rng)
-
-    def bar_c(ev, offset: float) -> None:
-        bar_a(ev, offset)
-        apply_snare_roll_fill(ev, offset, rng)
-
-
-    pattern = compose_abac_pattern(
+    pattern = compose_from_base(
         "house",
-        bar_a,
-        bar_b,
-        bar_c,
+        base_bar,
+        rng,
+        chain_preset=chain_preset,
         seed_base=seed_base,
         pattern_id=f"house_{variation_index}",
     )
-    if pattern_store is not None:
-        pid = pattern_store.random_base_id("house", rng)
+
+    if pattern_catalog is not None:
+        pid = pattern_catalog.random_pattern_id("house", rng)
         if pid:
-            pattern.set_slot("A", pattern_store.get_slot_events(pid, "A"))
+            base_events = pattern_catalog.get_slot(pid, "A")
+            pattern.set_slot("BASE", base_events)
+            pattern.register_workflow_slots()
             pattern.pattern_id = pid
+
     return pattern
 
 
@@ -68,6 +61,9 @@ def generate_house_events(
     variation_index: int = 1,
     seed_base: int | None = None,
     base_offset: float = 0.0,
+    **kwargs,
 ) -> EventMap:
-    pattern = generate_house_pattern(variation_index, seed_base)
-    return pattern_to_events(pattern, base_offset=base_offset)
+    return pattern_to_events(
+        generate_house_pattern(variation_index, seed_base, **kwargs),
+        base_offset=base_offset,
+    )

@@ -78,8 +78,10 @@ def generate_pattern_for_genre(
     genre: str,
     variation_index: int = 1,
     seed_base: int | None = None,
+    **kwargs,
 ) -> DrumPattern:
     return get_genre(genre).pattern_generator(
         variation_index=variation_index,
         seed_base=seed_base,
+        **kwargs,
     )

@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from midi_beats.core.events import EventMap
-from midi_beats.core.pattern_model import DrumPattern
+from midi_beats.core.pattern_model import ChainPreset, DrumPattern
 from midi_beats.genres.base import (
     append_hits,
-    apply_mini_fill,
-    apply_snare_roll_fill,
-    compose_abac_pattern,
+    compose_from_base,
     make_rng,
     pattern_to_events,
 )
@@ -24,10 +22,12 @@ SWUNG_HAT = 2.25
 def generate_ukg_pattern(
     variation_index: int = 1,
     seed_base: int | None = None,
+    *,
+    chain_preset: ChainPreset | str = ChainPreset.ABAC,
 ) -> DrumPattern:
     rng = make_rng(seed_base, variation_index)
 
-    def bar_a(ev, offset: float) -> None:
+    def base_bar(ev, offset: float) -> None:
         append_hits(ev, "kick", offset, KICK_PAT, 100)
         append_hits(ev, "snare", offset, SNARE_PAT, 110)
         append_hits(ev, "clap", offset, CLAP_PAT, 110)
@@ -37,23 +37,22 @@ def generate_ukg_pattern(
         if rng.random() < 0.5:
             ev["kick"].append((offset + 1.75, 60))
 
-    def bar_b(ev, offset: float) -> None:
-        bar_a(ev, offset)
-        apply_mini_fill(ev, offset, rng)
-
-    def bar_c(ev, offset: float) -> None:
-        bar_a(ev, offset)
-        apply_snare_roll_fill(ev, offset, rng)
-
-    return compose_abac_pattern("ukg", bar_a, bar_b, bar_c, seed_base=seed_base)
+    return compose_from_base(
+        "ukg",
+        base_bar,
+        rng,
+        chain_preset=chain_preset,
+        seed_base=seed_base,
+    )
 
 
 def generate_ukg_events(
     variation_index: int = 1,
     seed_base: int | None = None,
     base_offset: float = 0.0,
+    **kwargs,
 ) -> EventMap:
     return pattern_to_events(
-        generate_ukg_pattern(variation_index, seed_base),
+        generate_ukg_pattern(variation_index, seed_base, **kwargs),
         base_offset=base_offset,
     )

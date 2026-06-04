@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 from midi_beats.core.events import EventMap
-from midi_beats.core.pattern_model import DrumPattern
+from midi_beats.core.pattern_model import ChainPreset, DrumPattern
 from midi_beats.genres.base import (
     append_hits,
-    apply_amen_partial_fill,
-    apply_mini_fill,
-    apply_snare_roll_fill,
-    compose_abac_pattern,
+    compose_from_base,
     make_rng,
     pattern_to_events,
 )
@@ -23,6 +20,8 @@ HAT_PAT = [x * 0.5 for x in range(8)]
 def generate_breaks_pattern(
     variation_index: int = 1,
     seed_base: int | None = None,
+    *,
+    chain_preset: ChainPreset | str = ChainPreset.ABAC,
 ) -> DrumPattern:
     rng = make_rng(seed_base, variation_index)
     ghost_kicks: list[float] = []
@@ -37,24 +36,23 @@ def generate_breaks_pattern(
             ev["kick"].append((offset + gk, 80))
         append_hits(ev, "chh", offset, HAT_PAT, 100)
 
-    def bar_b(ev, offset: float) -> None:
-        base_bar(ev, offset)
-        apply_mini_fill(ev, offset, rng, snare_velocity=100)
-
-    def bar_c(ev, offset: float) -> None:
-        base_bar(ev, offset)
-        if not apply_amen_partial_fill(ev, offset, rng):
-            apply_snare_roll_fill(ev, offset, rng)
-
-    return compose_abac_pattern("breaks", base_bar, bar_b, bar_c, seed_base=seed_base)
+    return compose_from_base(
+        "breaks",
+        base_bar,
+        rng,
+        chain_preset=chain_preset,
+        use_amen_for_c=True,
+        seed_base=seed_base,
+    )
 
 
 def generate_breaks_events(
     variation_index: int = 1,
     seed_base: int | None = None,
     base_offset: float = 0.0,
+    **kwargs,
 ) -> EventMap:
     return pattern_to_events(
-        generate_breaks_pattern(variation_index, seed_base),
+        generate_breaks_pattern(variation_index, seed_base, **kwargs),
         base_offset=base_offset,
     )

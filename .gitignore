@@ -5,3 +5,4 @@ __pycache__/
 output/
 .venv/
 data/patterns.db
+data/patterns.parquet
