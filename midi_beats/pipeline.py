@@ -210,6 +210,7 @@ def generate_midi_patterns(
     lock_backbeat: bool = False,
     skip_empty_instruments: bool = True,
     write_manifest: bool = True,
+    chain_preset: str | None = None,
 ) -> dict[int, dict[str, str]]:
     """
     Generate, humanize, and export MIDI patterns for a genre.
@@ -231,7 +232,10 @@ def generate_midi_patterns(
     if export_layout == ExportLayout.CONCATENATED:
         combined = empty_event_map()
         for var in range(1, num_variations + 1):
-            events = generate_events(config.name, var, seed_base)
+            pattern = generate_pattern(
+                config.name, var, seed_base, chain_preset=chain_preset
+            )
+            events = pattern.to_chain_events()
             humanize_events(
                 events,
                 velocity_variation=velocity_var,
@@ -261,7 +265,9 @@ def generate_midi_patterns(
                 print(f"    {inst}: {path}")
     else:
         for var in range(1, num_variations + 1):
-            pattern = generate_pattern(config.name, var, seed_base)
+            pattern = generate_pattern(
+                config.name, var, seed_base, chain_preset=chain_preset
+            )
             events = pattern.to_chain_events()
             humanize_events(
                 events,
@@ -302,6 +308,68 @@ def generate_midi_patterns(
 
     return saved_all
 
+
+
+def export_drum_pattern(
+    pattern,
+    output_dir: str,
+    *,
+    layout: str = "both",
+    velocity_var: int = 15,
+    timing_var: float = 0.02,
+    seed_base: int | None = None,
+    lock_backbeat: bool = False,
+    skip_empty_instruments: bool = True,
+    write_manifest: bool = True,
+    variation_index: int = 1,
+) -> dict[str, Any]:
+    """Export a DrumPattern (e.g. from UI edits) to MIDI files."""
+    from midi_beats.core.pattern_model import DrumPattern
+
+    if not isinstance(pattern, DrumPattern):
+        raise TypeError("pattern must be DrumPattern")
+
+    genre = pattern.genre
+    bpm = pattern.tempo
+    export_layout = ExportLayout(layout) if isinstance(layout, str) else layout
+
+    events = pattern.to_chain_events()
+    humanize_events(
+        events,
+        velocity_variation=velocity_var,
+        timing_variation=timing_var,
+        seed=_humanize_seed(seed_base or pattern.seed_base, variation_index),
+        lock_backbeat=lock_backbeat,
+    )
+
+    var_dir = os.path.join(output_dir, genre, f"variation_{variation_index}")
+    result: dict[str, Any] = {"output_dir": var_dir, "chain_files": {}, "slot_files": {}}
+
+    if export_layout in (ExportLayout.PER_VARIATION, ExportLayout.BOTH):
+        result["chain_files"] = export_midi(
+            events,
+            var_dir,
+            genre,
+            variation_index=variation_index,
+            tempo=bpm,
+            skip_empty=skip_empty_instruments,
+            seed_base=seed_base or pattern.seed_base,
+            write_manifest=write_manifest,
+            pattern_meta=pattern.to_manifest_extras(),
+        )
+
+    if export_layout in (ExportLayout.SLOTS, ExportLayout.BOTH):
+        slots_dir = os.path.join(var_dir, "slots")
+        result["slot_files"] = export_slots_midi(
+            pattern,
+            slots_dir,
+            genre,
+            variation_index,
+            bpm,
+            skip_empty=skip_empty_instruments,
+        )
+
+    return result
 
 def export_from_config(config: ExportConfig) -> dict[int, dict[str, str]]:
     return generate_midi_patterns(

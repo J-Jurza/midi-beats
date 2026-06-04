@@ -1,22 +1,25 @@
-"""CLI: python -m midi_beats house -o ./output -n 5 --seed 42"""
+"""CLI: python -m midi_beats house -o ./output -n 5 --seed 42 --chain ABAC"""
 
 from __future__ import annotations
 
 import argparse
 import sys
 
+from midi_beats.core.pattern_model import ChainPreset
 from midi_beats.genres.registry import list_genres
 from midi_beats.pipeline import ExportLayout, generate_midi_patterns
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate procedural drum MIDI patterns (ABAC loops)."
+        description="Generate procedural drum MIDI patterns (phrase chains)."
     )
     parser.add_argument(
         "genre",
+        nargs="?",
+        default=None,
         choices=list_genres(),
-        help="Genre to generate",
+        help="Genre to generate (omit with --all-genres)",
     )
     parser.add_argument(
         "-o",
@@ -36,6 +39,12 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help="Base random seed for reproducibility",
+    )
+    parser.add_argument(
+        "--chain",
+        choices=[p.value for p in ChainPreset],
+        default=ChainPreset.ABAC.value,
+        help="Phrase chain preset (default: ABAC)",
     )
     parser.add_argument(
         "--tempo",
@@ -59,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         "--layout",
         choices=[e.value for e in ExportLayout],
         default=ExportLayout.PER_VARIATION.value,
-        help="Export layout",
+        help="Export layout: per_variation, slots, both, concatenated",
     )
     parser.add_argument(
         "--lock-backbeat",
@@ -83,13 +92,19 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    if args.all_genres:
+        genres = list_genres()
+    elif args.genre:
+        genres = [args.genre]
+    else:
+        parser.error("Provide a genre or use --all-genres")
+
     layout = (
         ExportLayout.CONCATENATED
         if args.concatenated
         else ExportLayout(args.layout)
     )
-
-    genres = list_genres() if args.all_genres else [args.genre]
 
     for genre in genres:
         generate_midi_patterns(
@@ -103,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             verbose=args.verbose,
             layout=layout,
             lock_backbeat=args.lock_backbeat,
+            chain_preset=args.chain,
         )
 
     return 0

@@ -174,3 +174,45 @@ select, input {
   color: var(--muted);
   font-size: 9px;
 }
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.action-row button {
+  background: var(--inactive);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.action-row button:hover {
+  border-color: var(--active-dim);
+}
+
+#btn-export.accent, .top .accent {
+  background: var(--active);
+  color: #111;
+  border: none;
+  font-weight: bold;
+}
+
+.step {
+  cursor: pointer;
+  padding: 0;
+}
+
+.step:focus {
+  outline: 1px solid var(--active);
+}
+
+.step.on:hover {
+  filter: brightness(1.15);
+}
